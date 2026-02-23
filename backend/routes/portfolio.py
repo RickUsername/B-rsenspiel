@@ -1,0 +1,308 @@
+"""
+API-Routen für Konto und Portfolio: Balance, Einzahlungen, Positionen.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+from sqlalchemy.orm import Session
+
+from database import get_db
+from models import User, Account, Transaction, Position, PriceCache, Watchlist
+from auth import get_current_user
+
+router = APIRouter(prefix="/account", tags=["Konto & Portfolio"])
+
+
+class DepositRequest(BaseModel):
+    """Request-Body für eine Einzahlung."""
+    amount: float
+    sender: str = "Eigene Überweisung"
+
+
+class WatchlistRequest(BaseModel):
+    """Request-Body für Watchlist-Einträge."""
+    ticker: str
+
+
+class BalanceResponse(BaseModel):
+    """Kontostand-Antwort."""
+    balance: float
+    account_id: int
+    portfolio_value: float
+    total_value: float
+
+
+@router.get("/balance", response_model=BalanceResponse)
+def get_balance(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Gibt den aktuellen Kontostand, Portfoliowert und Gesamtwert zurück."""
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    # Portfolio-Wert berechnen
+    positions = db.query(Position).filter(Position.account_id == account.id).all()
+    portfolio_value = 0.0
+    for pos in positions:
+        cached = db.query(PriceCache).filter(PriceCache.ticker == pos.ticker).first()
+        if cached:
+            current_value = cached.price * pos.quantity
+            if pos.leverage > 1:
+                pnl = (cached.price - pos.entry_price) * pos.quantity * pos.leverage
+                current_value = pos.margin_used + pnl - pos.accrued_financing
+            portfolio_value += max(current_value, 0)
+        else:
+            portfolio_value += pos.margin_used
+
+    return BalanceResponse(
+        balance=round(account.balance, 2),
+        account_id=account.id,
+        portfolio_value=round(portfolio_value, 2),
+        total_value=round(account.balance + portfolio_value, 2),
+    )
+
+
+@router.post("/deposit")
+def deposit(
+    request: DepositRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Zahlt einen Betrag auf das Konto ein.
+    Erstellt einen Kontoauszug-Eintrag als 'Überweisung eingegangen'.
+    """
+    if request.amount <= 0:
+        raise HTTPException(status_code=400, detail="Betrag muss positiv sein")
+
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    account.balance += request.amount
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
+    transaction = Transaction(
+        account_id=account.id,
+        amount=request.amount,
+        type="deposit",
+        description=f"Überweisung eingegangen von {request.sender} am {now.strftime('%d.%m.%Y %H:%M')}",
+    )
+    db.add(transaction)
+    db.commit()
+
+    return {
+        "message": f"{request.amount:.2f}€ eingezahlt",
+        "new_balance": round(account.balance, 2),
+    }
+
+
+@router.get("/transactions")
+def get_transactions(
+    type: Optional[str] = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Gibt alle Kontobewegungen zurück. Optional filterbar nach Typ.
+    Typen: deposit, trade_buy, trade_sell, fee, financing, margin_call
+    """
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    query = db.query(Transaction).filter(Transaction.account_id == account.id)
+    if type:
+        query = query.filter(Transaction.type == type)
+
+    transactions = query.order_by(Transaction.created_at.desc()).all()
+
+    return [
+        {
+            "id": t.id,
+            "amount": t.amount,
+            "type": t.type,
+            "description": t.description,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in transactions
+    ]
+
+
+@router.get("/positions")
+def get_positions(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Gibt alle offenen Positionen mit aktuellem P&L zurück."""
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    positions = db.query(Position).filter(Position.account_id == account.id).all()
+    result = []
+
+    for pos in positions:
+        cached = db.query(PriceCache).filter(PriceCache.ticker == pos.ticker).first()
+        current_price = cached.price if cached else pos.entry_price
+        currency = cached.currency if cached else "USD"
+
+        # P&L berechnen
+        price_diff = current_price - pos.entry_price
+        unrealized_pnl = price_diff * pos.quantity * pos.leverage
+        unrealized_pnl_after_financing = unrealized_pnl - pos.accrued_financing
+
+        # Prozentuale Veränderung bezogen auf Margin
+        pnl_percent = (unrealized_pnl_after_financing / pos.margin_used * 100) if pos.margin_used > 0 else 0
+
+        result.append({
+            "id": pos.id,
+            "ticker": pos.ticker,
+            "name": pos.name,
+            "asset_type": pos.asset_type,
+            "quantity": pos.quantity,
+            "entry_price": pos.entry_price,
+            "current_price": current_price,
+            "currency": currency,
+            "leverage": pos.leverage,
+            "margin_used": pos.margin_used,
+            "unrealized_pnl": round(unrealized_pnl_after_financing, 2),
+            "pnl_percent": round(pnl_percent, 2),
+            "accrued_financing": round(pos.accrued_financing, 2),
+            "stop_loss_price": pos.stop_loss_price,
+            "created_at": pos.created_at.isoformat() if pos.created_at else None,
+        })
+
+    return result
+
+
+@router.get("/trades")
+def get_trades(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Gibt alle abgeschlossenen Trades zurück."""
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    from models import Trade
+    trades = db.query(Trade).filter(
+        Trade.account_id == account.id
+    ).order_by(Trade.created_at.desc()).all()
+
+    return [
+        {
+            "id": t.id,
+            "ticker": t.ticker,
+            "name": t.name,
+            "direction": t.direction,
+            "quantity": t.quantity,
+            "price": t.price,
+            "leverage": t.leverage,
+            "fee": t.fee,
+            "realized_pnl": t.realized_pnl,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in trades
+    ]
+
+
+# --- Watchlist ---
+
+@router.post("/watchlist")
+def add_to_watchlist(
+    request: WatchlistRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fügt ein Asset zur Watchlist hinzu."""
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    # Prüfe ob schon in Watchlist
+    existing = db.query(Watchlist).filter(
+        Watchlist.account_id == account.id,
+        Watchlist.ticker == request.ticker,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Asset bereits in Watchlist")
+
+    entry = Watchlist(account_id=account.id, ticker=request.ticker)
+    db.add(entry)
+    db.commit()
+
+    return {"message": f"{request.ticker} zur Watchlist hinzugefügt"}
+
+
+@router.delete("/watchlist/{ticker}")
+def remove_from_watchlist(
+    ticker: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Entfernt ein Asset aus der Watchlist."""
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    entry = db.query(Watchlist).filter(
+        Watchlist.account_id == account.id,
+        Watchlist.ticker == ticker,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Asset nicht in Watchlist")
+
+    db.delete(entry)
+    db.commit()
+
+    return {"message": f"{ticker} aus Watchlist entfernt"}
+
+
+@router.get("/watchlist")
+def get_watchlist(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Gibt die Watchlist mit aktuellen Kursen zurück."""
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    entries = db.query(Watchlist).filter(Watchlist.account_id == account.id).all()
+    result = []
+
+    for entry in entries:
+        cached = db.query(PriceCache).filter(PriceCache.ticker == entry.ticker).first()
+        if cached:
+            change = 0.0
+            change_percent = 0.0
+            if cached.previous_close and cached.previous_close > 0:
+                change = cached.price - cached.previous_close
+                change_percent = (change / cached.previous_close) * 100
+
+            result.append({
+                "ticker": entry.ticker,
+                "name": cached.name,
+                "price": cached.price,
+                "currency": cached.currency,
+                "change": round(change, 2),
+                "change_percent": round(change_percent, 2),
+            })
+        else:
+            result.append({
+                "ticker": entry.ticker,
+                "name": entry.ticker,
+                "price": None,
+                "currency": "USD",
+                "change": 0,
+                "change_percent": 0,
+            })
+
+    return result
