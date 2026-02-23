@@ -31,6 +31,8 @@ export default function Dashboard() {
   const [showDeposit, setShowDeposit] = useState(false)
   const [historyData, setHistoryData] = useState([])
   const [historyRange, setHistoryRange] = useState(2) // default: 1W
+  const [watchlistExpanded, setWatchlistExpanded] = useState(false)
+  const [watchlistSort, setWatchlistSort] = useState('default') // 'default' | 'day_desc' | 'day_asc'
 
   const fetchData = async () => {
     try {
@@ -211,11 +213,26 @@ export default function Dashboard() {
 
       {/* Watchlist */}
       <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-3">
           <h2 className="text-lg font-semibold text-white">Watchlist</h2>
-          <Link to="/market" className="text-sm text-gray-500 hover:text-white transition-colors">
-            Bearbeiten
-          </Link>
+          <div className="flex items-center gap-3">
+            {watchlist.length > 0 && (
+              <button
+                onClick={() => {
+                  const next = watchlistSort === 'default' ? 'day_desc' : watchlistSort === 'day_desc' ? 'day_asc' : 'default'
+                  setWatchlistSort(next)
+                }}
+                className="text-xs text-gray-500 hover:text-white transition-colors flex items-center gap-1"
+              >
+                {watchlistSort === 'default' && '↕ Sortieren'}
+                {watchlistSort === 'day_desc' && '↓ Tag %'}
+                {watchlistSort === 'day_asc' && '↑ Tag %'}
+              </button>
+            )}
+            <Link to="/market" className="text-sm text-gray-500 hover:text-white transition-colors">
+              Bearbeiten
+            </Link>
+          </div>
         </div>
 
         {watchlist.length === 0 ? (
@@ -225,33 +242,49 @@ export default function Dashboard() {
               Jetzt Assets hinzufügen
             </Link>
           </div>
-        ) : (
-          <div className="bg-dark-card border border-dark-border rounded-2xl divide-y divide-dark-border">
-            {watchlist.slice(0, 5).map((item) => (
-              <Link
-                key={item.ticker}
-                to={`/asset/${item.ticker}`}
-                className="flex items-center justify-between p-4 hover:bg-dark-hover transition-colors first:rounded-t-2xl last:rounded-b-2xl"
-              >
-                <div>
-                  <p className="text-white font-medium">{item.ticker}</p>
-                  <p className="text-xs text-gray-500">{item.name}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-white">
-                    {item.price?.toLocaleString('de-DE', { minimumFractionDigits: 2 })} {item.currency}
-                  </p>
-                  <PriceTag
-                    value={item.change_percent}
-                    suffix="%"
-                    showSign
-                    className="text-xs"
-                  />
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+        ) : (() => {
+          const sorted = [...watchlist].sort((a, b) => {
+            if (watchlistSort === 'day_desc') return (b.change_percent ?? 0) - (a.change_percent ?? 0)
+            if (watchlistSort === 'day_asc') return (a.change_percent ?? 0) - (b.change_percent ?? 0)
+            return 0
+          })
+          const displayed = watchlistExpanded ? sorted : sorted.slice(0, 5)
+          return (
+            <div className="bg-dark-card border border-dark-border rounded-2xl divide-y divide-dark-border">
+              {displayed.map((item) => (
+                <Link
+                  key={item.ticker}
+                  to={`/asset/${item.ticker}`}
+                  className="flex items-center justify-between p-4 hover:bg-dark-hover transition-colors first:rounded-t-2xl last:rounded-b-2xl"
+                >
+                  <div>
+                    <p className="text-white font-medium">{item.ticker}</p>
+                    <p className="text-xs text-gray-500">{item.name}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-white">
+                      {item.price?.toLocaleString('de-DE', { minimumFractionDigits: 2 })} {item.currency}
+                    </p>
+                    <PriceTag
+                      value={item.change_percent}
+                      suffix="%"
+                      showSign
+                      className="text-xs"
+                    />
+                  </div>
+                </Link>
+              ))}
+              {watchlist.length > 5 && (
+                <button
+                  onClick={() => setWatchlistExpanded(!watchlistExpanded)}
+                  className="w-full py-3 text-sm text-gray-500 hover:text-white transition-colors rounded-b-2xl"
+                >
+                  {watchlistExpanded ? '▲ Weniger anzeigen' : `▼ Alle ${watchlist.length} anzeigen`}
+                </button>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Letzte Transaktionen */}

@@ -31,6 +31,7 @@ export default function Portfolio() {
   const [sellQuantity, setSellQuantity] = useState('')
   const [selling, setSelling] = useState(false)
   const [activeTab, setActiveTab] = useState('positions') // 'positions' | 'orders'
+  const [pnlMode, setPnlMode] = useState('pnl_eur') // 'pnl_eur' | 'pnl_pct' | 'day_eur' | 'day_pct'
 
   const fetchPositions = async () => {
     try {
@@ -150,6 +151,27 @@ export default function Portfolio() {
       {/* --- Positionen Tab --- */}
       {activeTab === 'positions' && (
         <>
+          {/* P&L Modus Toggle */}
+          {livePositions.length > 0 && (
+            <div className="flex bg-dark-card border border-dark-border rounded-xl p-1 mb-4 text-xs">
+              {[
+                { key: 'pnl_eur', label: 'Gewinn €' },
+                { key: 'pnl_pct', label: 'Gewinn %' },
+                { key: 'day_eur', label: 'Tag €' },
+                { key: 'day_pct', label: 'Tag %' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setPnlMode(key)}
+                  className={`flex-1 py-1.5 rounded-lg font-medium transition-all ${
+                    pnlMode === key ? 'bg-dark-bg text-white' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {livePositions.length === 0 ? (
             <div className="bg-dark-card border border-dark-border rounded-2xl p-12 text-center">
               <p className="text-gray-500 mb-4">Du hast noch keine offenen Positionen</p>
@@ -194,18 +216,22 @@ export default function Portfolio() {
 
                     {/* P&L */}
                     <div className="text-right mx-4 min-w-[100px]">
-                      <PriceTag
-                        value={pos.unrealized_pnl}
-                        showSign
-                        className="font-semibold"
-                      />
-                      <div className="text-xs">
-                        <PriceTag
-                          value={pos.pnl_percent}
-                          suffix="%"
-                          showSign
-                        />
-                      </div>
+                      {pnlMode === 'pnl_eur' && (
+                        <PriceTag value={pos.unrealized_pnl} showSign suffix="€" className="font-semibold" />
+                      )}
+                      {pnlMode === 'pnl_pct' && (
+                        <PriceTag value={pos.pnl_percent} showSign suffix="%" className="font-semibold" />
+                      )}
+                      {pnlMode === 'day_eur' && (
+                        pos.day_change_eur != null
+                          ? <PriceTag value={pos.day_change_eur} showSign suffix="€" className="font-semibold" />
+                          : <span className="text-gray-600 font-semibold text-sm">–</span>
+                      )}
+                      {pnlMode === 'day_pct' && (
+                        pos.day_change_percent != null
+                          ? <PriceTag value={pos.day_change_percent} showSign suffix="%" className="font-semibold" />
+                          : <span className="text-gray-600 font-semibold text-sm">–</span>
+                      )}
                       {pos.accrued_financing > 0 && (
                         <p className="text-xs text-gray-600 mt-0.5">
                           Fin: -{pos.accrued_financing?.toFixed(2)}€

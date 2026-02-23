@@ -103,6 +103,16 @@ async def websocket_endpoint(websocket: WebSocket, account_id: int):
 
                     pnl_percent = (unrealized_pnl / pos.margin_used * 100) if pos.margin_used > 0 else 0
 
+                    # Tagesperformance
+                    previous_close = cached.previous_close if cached and cached.previous_close else None
+                    if previous_close and previous_close > 0:
+                        day_price_diff = current_price - previous_close
+                        day_change_eur = round(day_price_diff * pos.quantity * pos.leverage, 2)
+                        day_change_percent = round(day_change_eur / pos.margin_used * 100, 2) if pos.margin_used > 0 else 0
+                    else:
+                        day_change_eur = None
+                        day_change_percent = None
+
                     portfolio_data.append({
                         "id": pos.id,
                         "ticker": pos.ticker,
@@ -115,6 +125,8 @@ async def websocket_endpoint(websocket: WebSocket, account_id: int):
                         "pnl_percent": round(pnl_percent, 2),
                         "accrued_financing": round(pos.accrued_financing, 2),
                         "margin_used": pos.margin_used,
+                        "day_change_eur": day_change_eur,
+                        "day_change_percent": day_change_percent,
                     })
 
                 await websocket.send_json({
