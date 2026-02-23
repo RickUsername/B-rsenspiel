@@ -24,6 +24,7 @@ class BuyRequest(BaseModel):
 class SellRequest(BaseModel):
     """Request-Body für einen Verkauf."""
     position_id: int
+    quantity: float = None  # None = gesamte Position verkaufen
 
 
 @router.post("/buy")
@@ -72,7 +73,12 @@ def sell(
         raise HTTPException(status_code=404, detail="Kein Konto gefunden")
 
     try:
-        result = sell_position(db=db, account_id=account.id, position_id=request.position_id)
+        result = sell_position(
+            db=db,
+            account_id=account.id,
+            position_id=request.position_id,
+            sell_quantity=request.quantity,
+        )
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

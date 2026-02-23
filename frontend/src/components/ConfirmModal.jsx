@@ -2,7 +2,7 @@
  * ConfirmModal: Wiederverwendbares Bestätigungs-Modal.
  */
 
-export default function ConfirmModal({ isOpen, title, children, onConfirm, onCancel, confirmText = 'Bestätigen', cancelText = 'Abbrechen', loading = false }) {
+export default function ConfirmModal({ isOpen, title, children, onConfirm, onCancel, confirmText = 'Bestätigen', cancelText = 'Abbrechen', loading = false, disabled = false }) {
   if (!isOpen) return null
 
   return (
@@ -27,7 +27,7 @@ export default function ConfirmModal({ isOpen, title, children, onConfirm, onCan
           <button
             onClick={onConfirm}
             className="flex-1 py-3 px-4 rounded-xl bg-accent-green text-black font-semibold hover:brightness-110 transition-all disabled:opacity-50"
-            disabled={loading}
+            disabled={loading || disabled}
           >
             {loading ? 'Wird ausgeführt...' : confirmText}
           </button>

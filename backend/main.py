@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from database import init_db, get_db, SessionLocal
 from scheduler import start_scheduler, stop_scheduler
 from models import Account, Position, PriceCache
-from routes import users, portfolio, trading, market
+from routes import users, portfolio, trading, market, orders
 
 
 @asynccontextmanager
@@ -51,6 +51,7 @@ app.include_router(users.router)
 app.include_router(portfolio.router)
 app.include_router(trading.router)
 app.include_router(market.router)
+app.include_router(orders.router)
 
 
 @app.get("/", tags=["Status"])

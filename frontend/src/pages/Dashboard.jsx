@@ -1,14 +1,23 @@
 /**
- * Dashboard: Übersicht mit Gesamtportfoliowert, Kontostand, Watchlist und letzten Transaktionen.
+ * Dashboard: Übersicht mit Gesamtportfoliowert, Portfolio-Chart, Watchlist und letzten Transaktionen.
  */
 
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
+} from 'recharts'
 import { useAuth } from '../context/AuthContext'
 import { useWebSocket } from '../hooks/useWebSocket'
 import api from '../hooks/api'
 import PriceTag from '../components/PriceTag'
 import DepositModal from '../components/DepositModal'
+
+const HISTORY_RANGES = [
+  { label: '1T', days: 1 },
+  { label: '1W', days: 7 },
+  { label: '1M', days: 30 },
+]
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -17,6 +26,8 @@ export default function Dashboard() {
   const [watchlist, setWatchlist] = useState([])
   const [transactions, setTransactions] = useState([])
   const [showDeposit, setShowDeposit] = useState(false)
+  const [historyData, setHistoryData] = useState([])
+  const [historyRange, setHistoryRange] = useState(1) // default: 1W
 
   const fetchData = async () => {
     try {
@@ -33,23 +44,132 @@ export default function Dashboard() {
     }
   }
 
+  const fetchHistory = async (days) => {
+    try {
+      const res = await api.get(`/account/portfolio-history?days=${days}`)
+      setHistoryData(res.data)
+    } catch (err) {
+      setHistoryData([])
+    }
+  }
+
   useEffect(() => {
     fetchData()
   }, [])
+
+  useEffect(() => {
+    fetchHistory(HISTORY_RANGES[historyRange].days)
+  }, [historyRange])
 
   // Live-Daten vom WebSocket übernehmen
   const totalValue = wsData?.total_value ?? balance?.total_value ?? 0
   const portfolioValue = wsData?.portfolio_value ?? balance?.portfolio_value ?? 0
   const cashBalance = wsData?.balance ?? balance?.balance ?? 0
 
+  // Chart-Farbe: grün wenn aktueller Wert >= Startwert
+  const firstValue = historyData[0]?.total_value ?? totalValue
+  const chartColor = totalValue >= firstValue ? '#00c805' : '#ff4444'
+
+  // Gewinn/Verlust seit Beginn des gewählten Zeitraums
+  const periodPnl = historyData.length > 1 ? totalValue - firstValue : null
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
       {/* Gesamtportfoliowert */}
-      <div className="mb-8">
+      <div className="mb-2">
         <p className="text-sm text-gray-500 mb-1">Gesamtportfoliowert</p>
         <h1 className="text-4xl font-bold text-white">
           {totalValue.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
         </h1>
+        {periodPnl !== null && (
+          <div className="mt-1">
+            <PriceTag value={periodPnl} showSign className="text-sm" />
+            <span className="text-xs text-gray-500 ml-2">
+              ({HISTORY_RANGES[historyRange].label})
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Portfolio-Chart */}
+      <div className="bg-dark-card border border-dark-border rounded-2xl p-4 mb-6">
+        {/* Zeitraum-Auswahl */}
+        <div className="flex gap-1 mb-3">
+          {HISTORY_RANGES.map((r, idx) => (
+            <button
+              key={r.label}
+              onClick={() => setHistoryRange(idx)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                historyRange === idx
+                  ? 'bg-white/10 text-white'
+                  : 'text-gray-500 hover:text-white'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
+        {historyData.length > 1 ? (
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={historyData}>
+              <defs>
+                <linearGradient id="portfolioGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={chartColor} stopOpacity={0.2} />
+                  <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="date"
+                tick={{ fill: '#666', fontSize: 10 }}
+                tickFormatter={(val) => {
+                  const d = new Date(val)
+                  if (HISTORY_RANGES[historyRange].days <= 1) {
+                    return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+                  }
+                  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+                }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                domain={['auto', 'auto']}
+                tick={{ fill: '#666', fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+                width={65}
+                tickFormatter={(v) => `${v.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}€`}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1a1a1a',
+                  border: '1px solid #2a2a2a',
+                  borderRadius: '12px',
+                  color: '#fff',
+                  fontSize: '13px',
+                }}
+                formatter={(val) => [`${val?.toLocaleString('de-DE', { minimumFractionDigits: 2 })}€`, 'Gesamtwert']}
+                labelFormatter={(val) => new Date(val).toLocaleString('de-DE')}
+              />
+              {firstValue && (
+                <ReferenceLine y={firstValue} stroke="#333" strokeDasharray="3 3" />
+              )}
+              <Area
+                type="monotone"
+                dataKey="total_value"
+                stroke={chartColor}
+                strokeWidth={2}
+                fill="url(#portfolioGradient)"
+                dot={false}
+                activeDot={{ r: 4, fill: chartColor }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-[180px] flex items-center justify-center text-gray-600 text-sm">
+            Noch keine Chart-Daten — werden stündlich aufgezeichnet
+          </div>
+        )}
       </div>
 
       {/* Konto & Einzahlen */}

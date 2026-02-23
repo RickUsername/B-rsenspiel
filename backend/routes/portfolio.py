@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Account, Transaction, Position, PriceCache, Watchlist
+from models import User, Account, Transaction, Position, PriceCache, Watchlist, PortfolioSnapshot
 from auth import get_current_user
 
 router = APIRouter(prefix="/account", tags=["Konto & Portfolio"])
@@ -211,6 +211,70 @@ def get_trades(
         }
         for t in trades
     ]
+
+
+@router.get("/portfolio-history")
+def get_portfolio_history(
+    days: int = 7,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Gibt die Portfoliowert-History der letzten N Tage zurück.
+    Basiert auf stündlichen Snapshots. Ergänzt fehlende Anfangspunkte.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    snapshots = (
+        db.query(PortfolioSnapshot)
+        .filter(
+            PortfolioSnapshot.account_id == account.id,
+            PortfolioSnapshot.created_at >= since,
+        )
+        .order_by(PortfolioSnapshot.created_at.asc())
+        .all()
+    )
+
+    result = [
+        {
+            "date": s.created_at.isoformat(),
+            "total_value": s.total_value,
+            "balance": s.balance,
+            "portfolio_value": s.portfolio_value,
+        }
+        for s in snapshots
+    ]
+
+    # Wenn noch keine Snapshots: aktuellen Wert als Startpunkt zurückgeben
+    if not result:
+        positions = db.query(Position).filter(Position.account_id == account.id).all()
+        portfolio_value = 0.0
+        for pos in positions:
+            cached = db.query(PriceCache).filter(PriceCache.ticker == pos.ticker).first()
+            if cached:
+                if pos.leverage > 1:
+                    pnl = (cached.price - pos.entry_price) * pos.quantity * pos.leverage
+                    val = pos.margin_used + pnl - pos.accrued_financing
+                else:
+                    val = cached.price * pos.quantity
+                portfolio_value += max(val, 0)
+            else:
+                portfolio_value += pos.margin_used
+
+        now = datetime.now(timezone.utc)
+        result = [{
+            "date": now.isoformat(),
+            "total_value": round(account.balance + portfolio_value, 2),
+            "balance": round(account.balance, 2),
+            "portfolio_value": round(portfolio_value, 2),
+        }]
+
+    return result
 
 
 # --- Watchlist ---

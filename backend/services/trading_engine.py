@@ -148,14 +148,15 @@ def buy_asset(
     }
 
 
-def sell_position(db: Session, account_id: int, position_id: int) -> dict:
+def sell_position(
+    db: Session,
+    account_id: int,
+    position_id: int,
+    sell_quantity: float = None,
+) -> dict:
     """
-    Verkauft eine offene Position.
-    1. Berechnet aktuellen Wert
-    2. Zieht Financing-Kosten ab
-    3. Zieht Gebühr ab
-    4. Schreibt P&L auf Konto
-    5. Verschiebt in trades
+    Verkauft eine offene Position (ganz oder teilweise).
+    sell_quantity: Anzahl Stücke die verkauft werden sollen. None = alles.
     """
     position = db.query(Position).filter(
         Position.id == position_id,
@@ -175,17 +176,26 @@ def sell_position(db: Session, account_id: int, position_id: int) -> dict:
 
     current_price = cached.price
 
-    # P&L berechnen
+    # Teilverkauf oder Vollverkauf
+    is_partial = sell_quantity is not None and sell_quantity < position.quantity
+    if sell_quantity is not None and sell_quantity <= 0:
+        raise ValueError("Verkaufsmenge muss positiv sein")
+    if sell_quantity is not None and sell_quantity > position.quantity:
+        raise ValueError(f"Verkaufsmenge ({sell_quantity:.4f}) überschreitet Positionsgröße ({position.quantity:.4f})")
+
+    qty_sold = sell_quantity if is_partial else position.quantity
+    fraction = qty_sold / position.quantity
+
+    # P&L für verkaufte Menge berechnen
     price_diff = current_price - position.entry_price
-    gross_pnl = price_diff * position.quantity * position.leverage
+    gross_pnl = price_diff * qty_sold * position.leverage
+    financing_portion = position.accrued_financing * fraction
+    net_pnl = gross_pnl - financing_portion - FEE
 
-    # Financing-Kosten abziehen
-    net_pnl = gross_pnl - position.accrued_financing - FEE
-
-    # Auszahlung: Margin + P&L
-    payout = position.margin_used + net_pnl
+    margin_portion = position.margin_used * fraction
+    payout = margin_portion + net_pnl
     if payout < 0:
-        payout = 0  # Maximalverlust begrenzt
+        payout = 0
 
     account.balance += payout
 
@@ -195,7 +205,7 @@ def sell_position(db: Session, account_id: int, position_id: int) -> dict:
         ticker=position.ticker,
         name=position.name,
         direction="sell",
-        quantity=position.quantity,
+        quantity=qty_sold,
         price=current_price,
         leverage=position.leverage,
         fee=FEE,
@@ -208,24 +218,37 @@ def sell_position(db: Session, account_id: int, position_id: int) -> dict:
         account_id=account_id,
         amount=net_pnl,
         type="trade_sell",
-        description=f"Verkauf {position.quantity:.4f}x {position.name} ({position.ticker}) @ {current_price:.2f} | P&L: {net_pnl:+.2f}€",
+        description=f"Verkauf {qty_sold:.4f}x {position.name} ({position.ticker}) @ {current_price:.2f} | P&L: {net_pnl:+.2f}€",
     )
     db.add(transaction)
 
-    # Position löschen
-    db.delete(position)
+    if is_partial:
+        # Position anteilig reduzieren
+        position.quantity -= qty_sold
+        position.margin_used -= margin_portion
+        position.accrued_financing -= financing_portion
+        # Stop-Loss neu berechnen
+        if position.leverage > 1:
+            position.stop_loss_price = calculate_stop_loss(
+                position.entry_price, position.leverage, position.margin_used, position.quantity
+            )
+    else:
+        # Gesamte Position löschen
+        db.delete(position)
+
     db.commit()
 
     return {
         "ticker": position.ticker,
         "name": position.name,
-        "quantity": position.quantity,
+        "quantity_sold": qty_sold,
         "entry_price": position.entry_price,
         "exit_price": current_price,
         "leverage": position.leverage,
         "gross_pnl": round(gross_pnl, 2),
-        "financing_costs": round(position.accrued_financing, 2),
+        "financing_costs": round(financing_portion, 2),
         "fee": FEE,
         "net_pnl": round(net_pnl, 2),
         "payout": round(payout, 2),
+        "partial": is_partial,
     }

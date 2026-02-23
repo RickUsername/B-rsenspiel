@@ -9,6 +9,8 @@ from apscheduler.triggers.cron import CronTrigger
 from database import SessionLocal
 from services.market_data import refresh_all_cached_prices
 from services.financing import process_overnight_financing, check_all_margin_calls
+from services.orders import process_pending_orders
+from services.portfolio_snapshots import take_portfolio_snapshots
 
 scheduler = BackgroundScheduler()
 
@@ -19,6 +21,7 @@ def update_prices_job():
     try:
         refresh_all_cached_prices(db)
         check_all_margin_calls(db)
+        process_pending_orders(db)
     finally:
         db.close()
 
@@ -32,9 +35,18 @@ def overnight_financing_job():
         db.close()
 
 
+def portfolio_snapshot_job():
+    """Job: Speichert stündlich den Portfoliowert für den Dashboard-Chart."""
+    db = SessionLocal()
+    try:
+        take_portfolio_snapshots(db)
+    finally:
+        db.close()
+
+
 def start_scheduler():
     """Startet den Scheduler mit allen Jobs."""
-    # Preis-Updates alle 60 Sekunden
+    # Preis-Updates alle 60 Sekunden (inkl. Margin-Checks und Order-Verarbeitung)
     scheduler.add_job(
         update_prices_job,
         trigger=IntervalTrigger(seconds=60),
@@ -49,6 +61,15 @@ def start_scheduler():
         trigger=CronTrigger(hour=23, minute=59),
         id="overnight_financing",
         name="Tägliche Finanzierungskosten",
+        replace_existing=True,
+    )
+
+    # Portfolio-Snapshots stündlich
+    scheduler.add_job(
+        portfolio_snapshot_job,
+        trigger=IntervalTrigger(hours=1),
+        id="portfolio_snapshots",
+        name="Stündliche Portfolio-Snapshots",
         replace_existing=True,
     )
 

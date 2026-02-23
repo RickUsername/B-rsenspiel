@@ -136,3 +136,53 @@ class Watchlist(Base):
     added_at = Column(DateTime, server_default=func.now())
 
     account = relationship("Account", back_populates="watchlist")
+
+
+class PortfolioSnapshot(Base):
+    """Stündliche Schnappschüsse des Portfoliowerts für den Dashboard-Chart."""
+    __tablename__ = "portfolio_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    total_value = Column(Float, nullable=False)
+    balance = Column(Float, nullable=False)
+    portfolio_value = Column(Float, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class OrderType(str, enum.Enum):
+    """Typen von Limit- und Stop-Orders."""
+    LIMIT_BUY = "limit_buy"      # Kauf wenn Preis <= limit_price
+    LIMIT_SELL = "limit_sell"    # Verkauf wenn Preis >= limit_price (Take Profit)
+    STOP_LOSS = "stop_loss"      # Verkauf wenn Preis <= limit_price (Stop Loss)
+
+
+class OrderStatus(str, enum.Enum):
+    """Status einer Order."""
+    PENDING = "pending"
+    EXECUTED = "executed"
+    CANCELLED = "cancelled"
+
+
+class Order(Base):
+    """Ausstehende Limit- und Stop-Orders."""
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    ticker = Column(String, nullable=False)
+    name = Column(String, default="")
+    order_type = Column(String, nullable=False)   # limit_buy, limit_sell, stop_loss
+    status = Column(String, default="pending")    # pending, executed, cancelled
+    limit_price = Column(Float, nullable=False)   # Auslösepreis
+
+    # Felder für Kauf-Orders (limit_buy)
+    amount_eur = Column(Float, nullable=True)
+    leverage = Column(Integer, default=1)
+
+    # Felder für Verkauf-Orders (limit_sell, stop_loss)
+    position_id = Column(Integer, ForeignKey("positions.id"), nullable=True)
+    sell_quantity = Column(Float, nullable=True)  # None = gesamte Position
+
+    created_at = Column(DateTime, server_default=func.now())
+    executed_at = Column(DateTime, nullable=True)
