@@ -3,12 +3,14 @@ Marktdaten-Service: Abruf und Caching von Kursdaten via yfinance.
 Unterstützt Aktien, ETFs, Krypto und Indizes.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 import yfinance as yf
 from sqlalchemy.orm import Session
 
 from models import PriceCache, AssetType
+
+CACHE_MAX_AGE_SECONDS = 120  # Kurs gilt als veraltet nach 2 Minuten
 
 
 def detect_asset_type(ticker: str) -> str:
@@ -41,6 +43,11 @@ def get_price(ticker: str, db: Session) -> Optional[dict]:
     """
     cached = db.query(PriceCache).filter(PriceCache.ticker == ticker).first()
     if cached:
+        # Cache-Alter prüfen – bei veralteten Daten sofort neu abrufen
+        if cached.last_updated:
+            age = datetime.now(timezone.utc) - cached.last_updated.replace(tzinfo=timezone.utc)
+            if age.total_seconds() > CACHE_MAX_AGE_SECONDS:
+                return fetch_and_cache_price(ticker, db)
         return {
             "ticker": cached.ticker,
             "price": cached.price,
