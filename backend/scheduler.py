@@ -10,7 +10,8 @@ from database import SessionLocal
 from services.market_data import refresh_all_cached_prices
 from services.financing import process_overnight_financing, check_all_margin_calls
 from services.orders import process_pending_orders
-from services.portfolio_snapshots import take_portfolio_snapshots
+from services.portfolio_snapshots import take_portfolio_snapshots, cleanup_old_snapshots
+from services.catchup import update_last_run
 
 scheduler = BackgroundScheduler()
 
@@ -22,6 +23,7 @@ def update_prices_job():
         refresh_all_cached_prices(db)
         check_all_margin_calls(db)
         process_pending_orders(db)
+        update_last_run(db)  # Zeitpunkt merken für Downtime-Erkennung
     finally:
         db.close()
 
@@ -31,15 +33,28 @@ def overnight_financing_job():
     db = SessionLocal()
     try:
         process_overnight_financing(db)
+        # Letztes Financing-Datum aktualisieren
+        from datetime import datetime, timezone
+        from services.catchup import _set_state
+        _set_state(db, "last_financing_date", datetime.now(timezone.utc).date().isoformat())
     finally:
         db.close()
 
 
 def portfolio_snapshot_job():
-    """Job: Speichert stündlich den Portfoliowert für den Dashboard-Chart."""
+    """Job: Speichert minütlich den Portfoliowert für den Dashboard-Chart."""
     db = SessionLocal()
     try:
         take_portfolio_snapshots(db)
+    finally:
+        db.close()
+
+
+def cleanup_snapshots_job():
+    """Job: Bereinigt alte Portfolio-Snapshots stündlich."""
+    db = SessionLocal()
+    try:
+        cleanup_old_snapshots(db)
     finally:
         db.close()
 
@@ -64,12 +79,21 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Portfolio-Snapshots stündlich
+    # Portfolio-Snapshots jede Minute (für Dashboard-Chart)
     scheduler.add_job(
         portfolio_snapshot_job,
-        trigger=IntervalTrigger(hours=1),
+        trigger=IntervalTrigger(minutes=1),
         id="portfolio_snapshots",
-        name="Stündliche Portfolio-Snapshots",
+        name="Minütliche Portfolio-Snapshots",
+        replace_existing=True,
+    )
+
+    # Snapshot-Bereinigung stündlich (Minuten-Daten älter als 24h → 1 pro Stunde behalten)
+    scheduler.add_job(
+        cleanup_snapshots_job,
+        trigger=IntervalTrigger(hours=1),
+        id="cleanup_snapshots",
+        name="Stündliche Snapshot-Bereinigung",
         replace_existing=True,
     )
 

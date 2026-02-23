@@ -22,6 +22,13 @@ async def lifespan(app: FastAPI):
     """Startup und Shutdown Events."""
     # Startup
     init_db()
+    # Catch-up: Verpasste Orders/Margin Calls/Financing bei Downtime nachholen
+    db = SessionLocal()
+    try:
+        from services.catchup import run_catchup_if_needed
+        run_catchup_if_needed(db)
+    finally:
+        db.close()
     start_scheduler()
     print("Börsenspiel Backend gestartet!")
     yield

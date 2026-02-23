@@ -157,6 +157,16 @@ class OrderType(str, enum.Enum):
     STOP_LOSS = "stop_loss"      # Verkauf wenn Preis <= limit_price (Stop Loss)
 
 
+class SystemState(Base):
+    """Systemzustand: Speichert Metadaten wie letzten Preis-Check-Zeitpunkt."""
+    __tablename__ = "system_state"
+
+    id = Column(Integer, primary_key=True)
+    key = Column(String, unique=True, nullable=False)
+    value = Column(String, nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class OrderStatus(str, enum.Enum):
     """Status einer Order."""
     PENDING = "pending"

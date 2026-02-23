@@ -14,9 +14,12 @@ import PriceTag from '../components/PriceTag'
 import DepositModal from '../components/DepositModal'
 
 const HISTORY_RANGES = [
-  { label: '1T', days: 1 },
-  { label: '1W', days: 7 },
-  { label: '1M', days: 30 },
+  { label: '1H',  range: '1H' },
+  { label: '1T',  range: '1T' },
+  { label: '1W',  range: '1W' },
+  { label: '1M',  range: '1M' },
+  { label: '1J',  range: '1J' },
+  { label: 'MAX', range: 'MAX' },
 ]
 
 export default function Dashboard() {
@@ -27,7 +30,7 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState([])
   const [showDeposit, setShowDeposit] = useState(false)
   const [historyData, setHistoryData] = useState([])
-  const [historyRange, setHistoryRange] = useState(1) // default: 1W
+  const [historyRange, setHistoryRange] = useState(2) // default: 1W
 
   const fetchData = async () => {
     try {
@@ -44,9 +47,9 @@ export default function Dashboard() {
     }
   }
 
-  const fetchHistory = async (days) => {
+  const fetchHistory = async (rangeKey) => {
     try {
-      const res = await api.get(`/account/portfolio-history?days=${days}`)
+      const res = await api.get(`/account/portfolio-history?range=${rangeKey}`)
       setHistoryData(res.data)
     } catch (err) {
       setHistoryData([])
@@ -58,7 +61,12 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    fetchHistory(HISTORY_RANGES[historyRange].days)
+    fetchHistory(HISTORY_RANGES[historyRange].range)
+    // Minütliche Chart-Aktualisierung
+    const interval = setInterval(() => {
+      fetchHistory(HISTORY_RANGES[historyRange].range)
+    }, 60_000)
+    return () => clearInterval(interval)
   }, [historyRange])
 
   // Live-Daten vom WebSocket übernehmen
@@ -85,7 +93,7 @@ export default function Dashboard() {
           <div className="mt-1">
             <PriceTag value={periodPnl} showSign className="text-sm" />
             <span className="text-xs text-gray-500 ml-2">
-              ({HISTORY_RANGES[historyRange].label})
+              (seit {HISTORY_RANGES[historyRange].label})
             </span>
           </div>
         )}
@@ -124,10 +132,15 @@ export default function Dashboard() {
                 tick={{ fill: '#666', fontSize: 10 }}
                 tickFormatter={(val) => {
                   const d = new Date(val)
-                  if (HISTORY_RANGES[historyRange].days <= 1) {
+                  const r = HISTORY_RANGES[historyRange].range
+                  if (r === '1H' || r === '1T') {
                     return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
                   }
-                  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+                  if (r === '1W' || r === '1M') {
+                    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+                  }
+                  // 1J und MAX: Monat + Jahr
+                  return d.toLocaleDateString('de-DE', { month: '2-digit', year: '2-digit' })
                 }}
                 axisLine={false}
                 tickLine={false}
@@ -167,7 +180,7 @@ export default function Dashboard() {
           </ResponsiveContainer>
         ) : (
           <div className="h-[180px] flex items-center justify-center text-gray-600 text-sm">
-            Noch keine Chart-Daten — werden stündlich aufgezeichnet
+            Noch keine Chart-Daten — werden minütlich aufgezeichnet
           </div>
         )}
       </div>

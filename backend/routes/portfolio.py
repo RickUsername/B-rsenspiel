@@ -215,13 +215,14 @@ def get_trades(
 
 @router.get("/portfolio-history")
 def get_portfolio_history(
-    days: int = 7,
+    range: str = "1W",
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Gibt die Portfoliowert-History der letzten N Tage zurück.
-    Basiert auf stündlichen Snapshots. Ergänzt fehlende Anfangspunkte.
+    Gibt die Portfoliowert-History zurück.
+    range: 1H (1 Stunde), 1T (1 Tag), 1W (1 Woche), 1M (1 Monat), 1J (1 Jahr), MAX (alles)
+    Snapshots werden minütlich aufgezeichnet. Ältere Daten: 1 pro Stunde.
     """
     from datetime import datetime, timezone, timedelta
 
@@ -229,16 +230,25 @@ def get_portfolio_history(
     if not account:
         raise HTTPException(status_code=404, detail="Kein Konto gefunden")
 
-    since = datetime.now(timezone.utc) - timedelta(days=days)
-    snapshots = (
-        db.query(PortfolioSnapshot)
-        .filter(
-            PortfolioSnapshot.account_id == account.id,
-            PortfolioSnapshot.created_at >= since,
-        )
-        .order_by(PortfolioSnapshot.created_at.asc())
-        .all()
+    now = datetime.now(timezone.utc)
+
+    range_to_delta = {
+        "1H":  timedelta(hours=1),
+        "1T":  timedelta(hours=24),
+        "1W":  timedelta(days=7),
+        "1M":  timedelta(days=30),
+        "1J":  timedelta(days=365),
+        "MAX": None,
+    }
+    delta = range_to_delta.get(range, timedelta(days=7))
+
+    query = db.query(PortfolioSnapshot).filter(
+        PortfolioSnapshot.account_id == account.id,
     )
+    if delta is not None:
+        query = query.filter(PortfolioSnapshot.created_at >= now - delta)
+
+    snapshots = query.order_by(PortfolioSnapshot.created_at.asc()).all()
 
     result = [
         {
@@ -266,7 +276,6 @@ def get_portfolio_history(
             else:
                 portfolio_value += pos.margin_used
 
-        now = datetime.now(timezone.utc)
         result = [{
             "date": now.isoformat(),
             "total_value": round(account.balance + portfolio_value, 2),
