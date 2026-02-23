@@ -34,6 +34,8 @@ export default function Dashboard() {
   const [watchlistExpanded, setWatchlistExpanded] = useState(false)
   const [watchlistSort, setWatchlistSort] = useState('default') // 'default' | 'day_desc' | 'day_asc'
 
+  const round2 = (v) => Math.round(v * 100) / 100
+
   const fetchData = async () => {
     try {
       const [balRes, watchRes, txRes] = await Promise.all([
@@ -52,7 +54,12 @@ export default function Dashboard() {
   const fetchHistory = async (rangeKey) => {
     try {
       const res = await api.get(`/account/portfolio-history?range=${rangeKey}`)
-      setHistoryData(res.data)
+      // Performance berechnen: total_value minus kumulierte Einzahlungen
+      const enriched = res.data.map(d => ({
+        ...d,
+        performance: round2(d.total_value - (d.total_deposits ?? 0)),
+      }))
+      setHistoryData(enriched)
     } catch (err) {
       setHistoryData([])
     }
@@ -76,12 +83,14 @@ export default function Dashboard() {
   const portfolioValue = wsData?.portfolio_value ?? balance?.portfolio_value ?? 0
   const cashBalance = wsData?.balance ?? balance?.balance ?? 0
 
-  // Chart-Farbe: grün wenn aktueller Wert >= Startwert
-  const firstValue = historyData[0]?.total_value ?? totalValue
-  const chartColor = totalValue >= firstValue ? '#00c805' : '#ff4444'
+  // Performance = Gesamtwert minus Einzahlungen (reine Trading-Performance)
+  const totalDeposits = balance?.total_deposits ?? 0
+  const currentPerformance = round2(totalValue - totalDeposits)
+  const firstPerformance = historyData[0]?.performance ?? currentPerformance
+  const chartColor = currentPerformance >= firstPerformance ? '#00c805' : '#ff4444'
 
   // Gewinn/Verlust seit Beginn des gewählten Zeitraums
-  const periodPnl = historyData.length > 1 ? totalValue - firstValue : null
+  const periodPnl = historyData.length > 1 ? round2(currentPerformance - firstPerformance) : null
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
@@ -163,15 +172,15 @@ export default function Dashboard() {
                   color: '#fff',
                   fontSize: '13px',
                 }}
-                formatter={(val) => [`${val?.toLocaleString('de-DE', { minimumFractionDigits: 2 })}€`, 'Gesamtwert']}
+                formatter={(val) => [`${val?.toLocaleString('de-DE', { minimumFractionDigits: 2 })}€`, 'Performance']}
                 labelFormatter={(val) => new Date(val).toLocaleString('de-DE')}
               />
-              {firstValue && (
-                <ReferenceLine y={firstValue} stroke="#333" strokeDasharray="3 3" />
+              {firstPerformance != null && (
+                <ReferenceLine y={firstPerformance} stroke="#333" strokeDasharray="3 3" />
               )}
               <Area
                 type="monotone"
-                dataKey="total_value"
+                dataKey="performance"
                 stroke={chartColor}
                 strokeWidth={2}
                 fill="url(#portfolioGradient)"

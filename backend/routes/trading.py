@@ -89,3 +89,20 @@ def get_leverage_options(asset_type: str):
     """Gibt die verfügbaren Hebel für einen Asset-Typ zurück."""
     options = get_available_leverage(asset_type)
     return {"asset_type": asset_type, "leverage_options": options}
+
+
+@router.get("/leverage-info/{asset_type}")
+def get_leverage_info(asset_type: str):
+    """Gibt detaillierte Hebel-Infos für einen Asset-Typ zurück (Financing-Rate, Liquidation etc.)."""
+    from services.financing import get_financing_rate
+
+    daily_rate = get_financing_rate(asset_type)
+    annual_rate = round(daily_rate * 365 * 100, 1)
+
+    return {
+        "asset_type": asset_type,
+        "daily_rate": daily_rate,
+        "annual_rate_percent": annual_rate,
+        "liquidation_threshold_percent": 90,
+        "fee_per_trade": 1.0,
+    }

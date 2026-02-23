@@ -30,6 +30,7 @@ export default function AssetDetail() {
   const [selectedRange, setSelectedRange] = useState(2) // 1M default
   const [leverageOptions, setLeverageOptions] = useState([1])
   const [selectedLeverage, setSelectedLeverage] = useState(1)
+  const [leverageInfo, setLeverageInfo] = useState(null)
   const [amount, setAmount] = useState('')
   const [buyMode, setBuyMode] = useState('eur') // 'eur' oder 'qty'
   const [showConfirm, setShowConfirm] = useState(false)
@@ -66,6 +67,12 @@ export default function AssetDetail() {
       // Hebel laden
       const levRes = await api.get(`/trading/leverage/${res.data.asset_type}`)
       setLeverageOptions(levRes.data.leverage_options)
+      try {
+        const levInfoRes = await api.get(`/trading/leverage-info/${res.data.asset_type}`)
+        setLeverageInfo(levInfoRes.data)
+      } catch (_) {
+        // leverage-info optional
+      }
     } catch (err) {
       // Fehler ignorieren
     } finally {
@@ -418,22 +425,57 @@ export default function AssetDetail() {
                 <span className="text-gray-400">Anzahl</span>
                 <span className="text-white">{quantity.toFixed(4)} Stk.</span>
               </div>
-              {stopLossPrice && (
+              {selectedLeverage > 1 && leverageInfo && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Financing-Rate (p.a.)</span>
+                    <span className="text-gray-300">~{leverageInfo.annual_rate_percent}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Tägliche Kosten</span>
+                    <span className="text-gray-300">~{(positionSize * leverageInfo.daily_rate).toFixed(2)}€</span>
+                  </div>
+                  {stopLossPrice && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Liquidationskurs</span>
+                      <span className="text-accent-red">{stopLossPrice.toFixed(2)} {assetInfo.currency}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Liquidation bei</span>
+                    <span className="text-accent-red">{leverageInfo.liquidation_threshold_percent}% Margin-Verlust</span>
+                  </div>
+                </>
+              )}
+              {selectedLeverage <= 1 && stopLossPrice && (
                 <div className="flex justify-between">
                   <span className="text-gray-400">Geschätzter Liquidationskurs</span>
                   <span className="text-accent-red">{stopLossPrice.toFixed(2)}</span>
-                </div>
-              )}
-              {selectedLeverage > 1 && (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Financing-Rate (p.a.)</span>
-                  <span className="text-gray-300">~5.5%</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-dark-border pt-2">
                 <span className="text-gray-400">Gebühr</span>
                 <span className="text-gray-300">1,00€</span>
               </div>
+            </div>
+          )}
+
+          {/* Risiko-Hinweis bei Hebel */}
+          {selectedLeverage > 1 && (
+            <div className={`rounded-xl p-4 text-sm ${
+              selectedLeverage >= 10
+                ? 'bg-red-500/10 border border-red-500/30 text-red-400'
+                : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
+            }`}>
+              <p className="font-medium mb-1">
+                {selectedLeverage >= 10 ? 'Hohes Risiko' : 'Erhöhtes Risiko'}
+              </p>
+              <p className="text-xs opacity-80">
+                {selectedLeverage >= 10
+                  ? `Mit ${selectedLeverage}x Hebel können kleine Kursbewegungen zu schneller Liquidation führen. Tägliche Finanzierungskosten von ~${leverageInfo ? leverageInfo.annual_rate_percent : '?'}% p.a. fallen an.`
+                  : `Gewinne und Verluste werden mit ${selectedLeverage}x multipliziert. Tägliche Finanzierungskosten von ~${leverageInfo ? leverageInfo.annual_rate_percent : '?'}% p.a. fallen an.`
+                }
+              </p>
             </div>
           )}
 

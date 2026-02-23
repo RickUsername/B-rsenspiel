@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func as sa_func
+
 from database import get_db
 from models import User, Account, Transaction, Position, PriceCache, Watchlist, PortfolioSnapshot
 from auth import get_current_user
@@ -31,6 +33,7 @@ class BalanceResponse(BaseModel):
     account_id: int
     portfolio_value: float
     total_value: float
+    total_deposits: float
 
 
 @router.get("/balance", response_model=BalanceResponse)
@@ -57,11 +60,18 @@ def get_balance(
         else:
             portfolio_value += pos.margin_used
 
+    # Summe aller Einzahlungen berechnen
+    total_deposits = db.query(sa_func.coalesce(sa_func.sum(Transaction.amount), 0.0)).filter(
+        Transaction.account_id == account.id,
+        Transaction.type == "deposit",
+    ).scalar()
+
     return BalanceResponse(
         balance=round(account.balance, 2),
         account_id=account.id,
         portfolio_value=round(portfolio_value, 2),
         total_value=round(account.balance + portfolio_value, 2),
+        total_deposits=round(float(total_deposits), 2),
     )
 
 
@@ -262,15 +272,33 @@ def get_portfolio_history(
 
     snapshots = query.order_by(PortfolioSnapshot.created_at.asc()).all()
 
-    result = [
-        {
+    # Alle Deposit-Transaktionen laden um kumulierte Einzahlungen pro Zeitpunkt zu berechnen
+    deposits = (
+        db.query(Transaction)
+        .filter(Transaction.account_id == account.id, Transaction.type == "deposit")
+        .order_by(Transaction.created_at.asc())
+        .all()
+    )
+
+    def cumulative_deposits_at(dt):
+        """Summiert alle Einzahlungen bis zum gegebenen Zeitpunkt."""
+        total = 0.0
+        for dep in deposits:
+            dep_time = dep.created_at
+            if dep_time and dep_time <= dt:
+                total += dep.amount
+        return round(total, 2)
+
+    result = []
+    for s in snapshots:
+        td = cumulative_deposits_at(s.created_at)
+        result.append({
             "date": s.created_at.isoformat(),
             "total_value": s.total_value,
             "balance": s.balance,
             "portfolio_value": s.portfolio_value,
-        }
-        for s in snapshots
-    ]
+            "total_deposits": td,
+        })
 
     # Wenn noch keine Snapshots: aktuellen Wert als Startpunkt zurückgeben
     if not result:
@@ -288,11 +316,13 @@ def get_portfolio_history(
             else:
                 portfolio_value += pos.margin_used
 
+        total_dep = cumulative_deposits_at(now)
         result = [{
             "date": now.isoformat(),
             "total_value": round(account.balance + portfolio_value, 2),
             "balance": round(account.balance, 2),
             "portfolio_value": round(portfolio_value, 2),
+            "total_deposits": total_dep,
         }]
 
     return result

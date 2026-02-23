@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from models import PriceCache, AssetType
 
-CACHE_MAX_AGE_SECONDS = 120  # Kurs gilt als veraltet nach 2 Minuten
+# Cache gilt maximal 90 Sekunden als frisch
+CACHE_MAX_AGE = timedelta(seconds=90)
 
 
 def detect_asset_type(ticker: str) -> str:
@@ -38,44 +39,59 @@ def detect_asset_type(ticker: str) -> str:
 
 def get_price(ticker: str, db: Session) -> Optional[dict]:
     """
-    Gibt den gecachten Kurs zurück. Wenn nicht im Cache, wird er abgerufen.
-    Gibt ein Dict mit price, currency, name, asset_type zurück.
+    Gibt den gecachten Kurs zurück, sofern er frisch genug ist.
+    Ist der Cache älter als CACHE_MAX_AGE, wird neu abgerufen.
     """
     cached = db.query(PriceCache).filter(PriceCache.ticker == ticker).first()
-    if cached:
-        # Cache-Alter prüfen – bei veralteten Daten sofort neu abrufen
-        if cached.last_updated:
-            age = datetime.now(timezone.utc) - cached.last_updated.replace(tzinfo=timezone.utc)
-            if age.total_seconds() > CACHE_MAX_AGE_SECONDS:
-                return fetch_and_cache_price(ticker, db)
-        return {
-            "ticker": cached.ticker,
-            "price": cached.price,
-            "previous_close": cached.previous_close,
-            "currency": cached.currency,
-            "name": cached.name,
-            "asset_type": cached.asset_type,
-            "last_updated": cached.last_updated.isoformat() if cached.last_updated else None,
-        }
+    if cached and cached.last_updated:
+        age = datetime.now(timezone.utc) - cached.last_updated.replace(tzinfo=timezone.utc)
+        if age <= CACHE_MAX_AGE:
+            return {
+                "ticker": cached.ticker,
+                "price": cached.price,
+                "previous_close": cached.previous_close,
+                "currency": cached.currency,
+                "name": cached.name,
+                "asset_type": cached.asset_type,
+                "last_updated": cached.last_updated.isoformat(),
+            }
 
-    # Nicht im Cache: jetzt abrufen und cachen
+    # Cache zu alt oder nicht vorhanden: neu abrufen
     return fetch_and_cache_price(ticker, db)
+
+
+def _get_realtime_price(yf_ticker) -> Optional[float]:
+    """Holt den aktuellsten Kurs über Minutendaten (history) statt .info."""
+    try:
+        hist = yf_ticker.history(period="1d", interval="1m")
+        if not hist.empty:
+            return float(hist["Close"].iloc[-1])
+    except Exception:
+        pass
+    # Fallback: Tagesdaten
+    try:
+        hist = yf_ticker.history(period="5d", interval="1d")
+        if not hist.empty:
+            return float(hist["Close"].iloc[-1])
+    except Exception:
+        pass
+    return None
 
 
 def fetch_and_cache_price(ticker: str, db: Session) -> Optional[dict]:
     """Ruft den aktuellen Kurs via yfinance ab und speichert ihn im Cache."""
     try:
         yf_ticker = yf.Ticker(ticker)
-        info = yf_ticker.info
 
-        price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
+        # Preis aus Minutendaten holen – viel aktueller als .info
+        price = _get_realtime_price(yf_ticker)
+
+        # Metadaten aus .info holen (Name, Währung, Typ) – hier ist Verzögerung OK
+        info = yf_ticker.info
         if price is None:
-            # Fallback: letzten Kurs aus History holen
-            hist = yf_ticker.history(period="1d")
-            if not hist.empty:
-                price = float(hist["Close"].iloc[-1])
-            else:
-                return None
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
+        if price is None:
+            return None
 
         currency = info.get("currency", "USD")
         name = info.get("shortName") or info.get("longName") or ticker
@@ -94,13 +110,14 @@ def fetch_and_cache_price(ticker: str, db: Session) -> Optional[dict]:
 
         # Cache aktualisieren oder erstellen
         cached = db.query(PriceCache).filter(PriceCache.ticker == ticker).first()
+        now = datetime.now(timezone.utc)
         if cached:
             cached.price = price
             cached.previous_close = previous_close
             cached.currency = currency
             cached.name = name
             cached.asset_type = asset_type
-            cached.last_updated = datetime.now(timezone.utc)
+            cached.last_updated = now
         else:
             cached = PriceCache(
                 ticker=ticker,
@@ -109,7 +126,7 @@ def fetch_and_cache_price(ticker: str, db: Session) -> Optional[dict]:
                 currency=currency,
                 name=name,
                 asset_type=asset_type,
-                last_updated=datetime.now(timezone.utc),
+                last_updated=now,
             )
             db.add(cached)
 
@@ -122,7 +139,7 @@ def fetch_and_cache_price(ticker: str, db: Session) -> Optional[dict]:
             "currency": currency,
             "name": name,
             "asset_type": asset_type,
-            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "last_updated": now.isoformat(),
         }
     except Exception:
         # Fallback auf gecachten Wert
