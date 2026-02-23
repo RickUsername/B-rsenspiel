@@ -6,8 +6,12 @@ echo "🚀 Starte Börsenspiel..."
 # Backend starten
 echo "📡 Starte Backend auf Port 8000..."
 cd backend
-pip install -r requirements.txt --quiet 2>/dev/null
-uvicorn main:app --reload --port 8000 &
+# Virtual Environment nutzen
+if [ ! -f "../.venv/bin/uvicorn" ]; then
+  python3 -m venv ../.venv
+  ../.venv/bin/pip install -r requirements.txt --quiet
+fi
+../.venv/bin/uvicorn main:app --reload --port 8000 &
 BACKEND_PID=$!
 cd ..
 

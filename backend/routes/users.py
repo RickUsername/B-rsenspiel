@@ -65,7 +65,7 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(account)
 
     # Token generieren
-    token = create_access_token({"sub": user.id})
+    token = create_access_token({"sub": str(user.id)})
 
     return TokenResponse(
         access_token=token,
@@ -87,7 +87,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     if not account:
         raise HTTPException(status_code=500, detail="Kein Konto gefunden")
 
-    token = create_access_token({"sub": user.id})
+    token = create_access_token({"sub": str(user.id)})
 
     return TokenResponse(
         access_token=token,
