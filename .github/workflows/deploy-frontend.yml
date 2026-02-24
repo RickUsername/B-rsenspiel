@@ -33,8 +33,8 @@ jobs:
       - name: Build
         working-directory: frontend
         env:
-          VITE_API_URL: https://boersenspiel-backend.onrender.com
-          VITE_WS_URL: wss://boersenspiel-backend.onrender.com
+          VITE_API_URL: https://boersenspiel-backend-rel5.onrender.com
+          VITE_WS_URL: wss://boersenspiel-backend-rel5.onrender.com
           VITE_BASE_PATH: /B-rsenspiel/
         run: npm run build
 
