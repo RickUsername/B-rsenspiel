@@ -97,7 +97,7 @@ export default function Dashboard() {
       {/* Gesamtportfoliowert */}
       <div className="mb-2">
         <p className="text-sm text-gray-500 mb-1">Gesamtportfoliowert</p>
-        <h1 className="text-4xl font-bold text-white">
+        <h1 className="text-3xl md:text-4xl font-bold text-white">
           {totalValue.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}€
         </h1>
         {periodPnl !== null && (
@@ -118,7 +118,7 @@ export default function Dashboard() {
             <button
               key={r.label}
               onClick={() => setHistoryRange(idx)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-2.5 py-1.5 text-xs md:px-3 md:text-sm rounded-lg font-medium transition-colors ${
                 historyRange === idx
                   ? 'bg-white/10 text-white'
                   : 'text-gray-500 hover:text-white'

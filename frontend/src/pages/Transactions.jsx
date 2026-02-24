@@ -34,11 +34,9 @@ function TradeDetails({ tx }) {
 
   if (tx.type === 'trade_buy') {
     if (!td) return <p className="text-gray-600 text-sm">Keine Details verfügbar</p>
-    const positionSize = td.price * td.quantity
+    const positionSize = td.price * td.quantity * (td.leverage || 1)
     const marginUsed = positionSize / (td.leverage || 1)
-    const liquidationPrice = td.leverage > 1
-      ? td.price - (0.9 * marginUsed) / (td.quantity * td.leverage)
-      : null
+    const liquidationPrice = td.leverage > 1 ? td.price * (1 - 0.9 / td.leverage) : null
     return (
       <>
         <DetailRow label="Asset">{td.name} ({td.ticker})</DetailRow>
@@ -201,10 +199,10 @@ export default function Transactions() {
             <div key={tx.id}>
               <div
                 onClick={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
-                className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
+                className="flex items-center gap-3 md:gap-4 p-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
               >
                 {/* Icon */}
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${typeBgColor(tx.type)}`}>
+                <div className={`w-8 h-8 text-xs md:w-10 md:h-10 md:text-sm rounded-full flex items-center justify-center font-bold shrink-0 ${typeBgColor(tx.type)}`}>
                   {typeIcon(tx.type)}
                 </div>
 
@@ -234,7 +232,7 @@ export default function Transactions() {
               {/* Aufklappbarer Detail-Bereich */}
               {expandedId === tx.id && (
                 <div className="px-4 pb-4">
-                  <div className="bg-dark-bg rounded-xl p-4 ml-14">
+                  <div className="bg-dark-bg rounded-xl p-4 ml-8 md:ml-14">
                     <TradeDetails tx={tx} />
                   </div>
                 </div>

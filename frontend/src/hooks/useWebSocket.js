@@ -4,6 +4,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+
 export function useWebSocket(accountId) {
   const [data, setData] = useState(null)
   const [connected, setConnected] = useState(false)
@@ -13,7 +15,7 @@ export function useWebSocket(accountId) {
   const connect = useCallback(() => {
     if (!accountId) return
 
-    const ws = new WebSocket(`ws://localhost:8000/ws/${accountId}`)
+    const ws = new WebSocket(`${WS_URL}/ws/${accountId}`)
 
     ws.onopen = () => {
       setConnected(true)

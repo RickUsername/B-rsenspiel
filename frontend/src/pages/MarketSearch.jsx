@@ -80,8 +80,7 @@ export default function MarketSearch() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Aktie, ETF, Krypto oder Index suchen..."
-          className="w-full bg-dark-card border border-dark-border rounded-2xl px-5 py-4 text-white placeholder-gray-600 focus:outline-none focus:border-accent-green transition-colors text-lg"
-          autoFocus
+          className="w-full bg-dark-card border border-dark-border rounded-2xl px-5 py-3 text-base md:py-4 md:text-lg text-white placeholder-gray-600 focus:outline-none focus:border-accent-green transition-colors"
         />
         {loading && (
           <div className="absolute right-4 top-1/2 -translate-y-1/2">

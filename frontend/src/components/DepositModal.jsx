@@ -1,5 +1,6 @@
 /**
  * DepositModal: Modal für Einzahlungen.
+ * Mobile: Bottom-Sheet, Desktop: zentriert.
  */
 
 import { useState } from 'react'
@@ -40,10 +41,10 @@ export default function DepositModal({ isOpen, onClose, onSuccess }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative bg-dark-card border border-dark-border rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+      <div className="relative bg-dark-card border border-dark-border rounded-t-2xl md:rounded-2xl p-6 w-full md:max-w-md md:mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-white mb-4">Geld einzahlen</h2>
 
         {error && (

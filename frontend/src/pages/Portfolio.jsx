@@ -216,7 +216,7 @@ export default function Portfolio() {
                     </div>
 
                     {/* Menge & Preise */}
-                    <div className="text-right mx-4">
+                    <div className="hidden md:block text-right mx-4 shrink-0">
                       <p className="text-xs text-gray-500">
                         {pos.quantity?.toFixed(4)} Stk. @ {pos.entry_price?.toFixed(2)}
                       </p>
@@ -226,7 +226,7 @@ export default function Portfolio() {
                     </div>
 
                     {/* P&L */}
-                    <div className="text-right mx-4 min-w-[100px]">
+                    <div className="text-right shrink-0 mx-2 md:mx-4 min-w-[80px] md:min-w-[100px]">
                       {pnlMode === 'pnl_eur' && (
                         <PriceTag value={pos.unrealized_pnl} showSign suffix="€" className="font-semibold" />
                       )}
@@ -253,7 +253,7 @@ export default function Portfolio() {
                     {/* Verkaufen Button */}
                     <button
                       onClick={(e) => { e.stopPropagation(); openSellModal(pos) }}
-                      className="ml-4 px-4 py-2 rounded-xl bg-accent-red/10 text-accent-red text-sm font-medium hover:bg-accent-red/20 transition-colors"
+                      className="hidden md:block ml-4 px-4 py-2 rounded-xl bg-accent-red/10 text-accent-red text-sm font-medium hover:bg-accent-red/20 transition-colors shrink-0"
                     >
                       Verkaufen
                     </button>
@@ -305,7 +305,7 @@ export default function Portfolio() {
                           : 'Storniert'}
                       </span>
                     </div>
-                    <div className="flex gap-4 text-xs text-gray-500">
+                    <div className="flex flex-wrap gap-4 text-xs text-gray-500">
                       <span>Limit: <span className="text-white">{order.limit_price?.toFixed(2)}</span></span>
                       {order.amount_eur && <span>Betrag: <span className="text-white">{order.amount_eur?.toFixed(2)}€</span></span>}
                       {order.sell_quantity && <span>Menge: <span className="text-white">{order.sell_quantity?.toFixed(4)}</span></span>}
@@ -403,7 +403,7 @@ export default function Portfolio() {
                   <button
                     key={pct}
                     onClick={() => setSellQuantity((sellModal.quantity * pct / 100).toFixed(4))}
-                    className="flex-1 py-1.5 text-xs rounded-lg bg-dark-bg border border-dark-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+                    className="flex-1 py-2 text-xs rounded-lg bg-dark-bg border border-dark-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
                   >
                     {pct}%
                   </button>

@@ -1,6 +1,7 @@
 /**
  * PositionDetailModal: Detailansicht einer gehaltenen Position.
  * Zeigt Positionsübersicht, Finanzen, Liquidation und Finanzierungskosten.
+ * Mobile: Bottom-Sheet, Desktop: zentriert.
  */
 
 import { Link } from 'react-router-dom'
@@ -60,12 +61,14 @@ export default function PositionDetailModal({ position, onClose, onSell }) {
   const currencySymbol = currency === 'USD' ? '$' : '€'
 
   // Berechnungen
-  const positionSize = pos.entry_price * pos.quantity
+  const positionSize = pos.entry_price * pos.quantity * leverage
   const currentValue = pos.margin_used + (pos.unrealized_pnl || 0)
   const pnlPercent = pos.pnl_percent || 0
 
-  // Liquidation - stop_loss_price vom Backend ist der echte Liquidationskurs
-  const liquidationPrice = isLeveraged && pos.stop_loss_price ? pos.stop_loss_price : null
+  // Liquidation (bei 90% Margin-Verlust)
+  const liquidationPrice = isLeveraged
+    ? pos.entry_price * (1 - 0.9 / leverage)
+    : null
   const liquidationDistance = liquidationPrice
     ? pos.current_price - liquidationPrice
     : null
@@ -82,12 +85,12 @@ export default function PositionDetailModal({ position, onClose, onSell }) {
     : 0
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-dark-card border border-dark-border rounded-2xl w-full max-w-lg mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-dark-card border border-dark-border rounded-t-2xl md:rounded-2xl w-full md:max-w-lg md:mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-dark-card border-b border-dark-border rounded-t-2xl p-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
@@ -107,7 +110,7 @@ export default function PositionDetailModal({ position, onClose, onSell }) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-dark-bg flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+            className="w-10 h-10 rounded-full bg-dark-bg flex items-center justify-center text-gray-400 hover:text-white transition-colors"
           >
             ✕
           </button>
@@ -173,6 +176,14 @@ export default function PositionDetailModal({ position, onClose, onSell }) {
             </Section>
           )}
 
+          {/* Stop-Loss Info */}
+          {pos.stop_loss_price && (
+            <Section title="Stop-Loss">
+              <Row label="Stop-Loss Kurs">
+                <span className="text-accent-red">{currencySymbol}{pos.stop_loss_price?.toFixed(2)}</span>
+              </Row>
+            </Section>
+          )}
         </div>
 
         {/* Footer Buttons */}

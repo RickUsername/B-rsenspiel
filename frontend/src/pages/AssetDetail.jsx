@@ -9,12 +9,6 @@ import api from '../hooks/api'
 import PriceTag from '../components/PriceTag'
 import ConfirmModal from '../components/ConfirmModal'
 
-const ORDER_TYPE_OPTIONS = [
-  { value: 'limit_buy', label: 'Kauflimit', desc: 'Kauft wenn Preis sinkt auf', color: 'text-accent-green' },
-  { value: 'limit_sell', label: 'Verkauflimit', desc: 'Verkauft wenn Preis steigt auf', color: 'text-blue-400' },
-  { value: 'stop_loss', label: 'Stop-Loss', desc: 'Verkauft wenn Preis fällt auf', color: 'text-accent-red' },
-]
-
 const TIME_RANGES = [
   { label: '1T', period: '1d', interval: '5m' },
   { label: '1W', period: '5d', interval: '15m' },
@@ -30,28 +24,16 @@ export default function AssetDetail() {
   const [selectedRange, setSelectedRange] = useState(2) // 1M default
   const [leverageOptions, setLeverageOptions] = useState([1])
   const [selectedLeverage, setSelectedLeverage] = useState(1)
-  const [leverageInfo, setLeverageInfo] = useState(null)
   const [amount, setAmount] = useState('')
   const [buyMode, setBuyMode] = useState('eur') // 'eur' oder 'qty'
   const [showConfirm, setShowConfirm] = useState(false)
   const [buying, setBuying] = useState(false)
   const [inWatchlist, setInWatchlist] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [positions, setPositions] = useState([])
-  const [activePanel, setActivePanel] = useState('buy') // 'buy' | 'order'
-  // Order form state
-  const [orderType, setOrderType] = useState('limit_buy')
-  const [orderPrice, setOrderPrice] = useState('')
-  const [orderAmount, setOrderAmount] = useState('')
-  const [orderLeverage, setOrderLeverage] = useState(1)
-  const [orderPositionId, setOrderPositionId] = useState('')
-  const [orderSellQty, setOrderSellQty] = useState('')
-  const [placingOrder, setPlacingOrder] = useState(false)
 
   useEffect(() => {
     fetchAssetData()
     checkWatchlist()
-    fetchPositionsForTicker()
   }, [ticker])
 
   useEffect(() => {
@@ -67,12 +49,6 @@ export default function AssetDetail() {
       // Hebel laden
       const levRes = await api.get(`/trading/leverage/${res.data.asset_type}`)
       setLeverageOptions(levRes.data.leverage_options)
-      try {
-        const levInfoRes = await api.get(`/trading/leverage-info/${res.data.asset_type}`)
-        setLeverageInfo(levInfoRes.data)
-      } catch (_) {
-        // leverage-info optional
-      }
     } catch (err) {
       // Fehler ignorieren
     } finally {
@@ -98,47 +74,6 @@ export default function AssetDetail() {
       // Ignore
     }
   }
-
-  const fetchPositionsForTicker = async () => {
-    try {
-      const res = await api.get('/account/positions')
-      setPositions(res.data.filter(p => p.ticker === ticker))
-    } catch (err) {
-      // Ignore
-    }
-  }
-
-  const handlePlaceOrder = async () => {
-    const price = parseFloat(orderPrice)
-    if (!price || price <= 0) return
-
-    setPlacingOrder(true)
-    try {
-      const payload = {
-        ticker,
-        order_type: orderType,
-        limit_price: price,
-      }
-      if (orderType === 'limit_buy') {
-        payload.amount_eur = parseFloat(orderAmount)
-        payload.leverage = orderLeverage
-      } else {
-        payload.position_id = parseInt(orderPositionId)
-        if (orderSellQty) payload.sell_quantity = parseFloat(orderSellQty)
-      }
-      await api.post('/orders', payload)
-      setOrderPrice('')
-      setOrderAmount('')
-      setOrderSellQty('')
-      alert('Order gesetzt!')
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Order fehlgeschlagen')
-    } finally {
-      setPlacingOrder(false)
-    }
-  }
-
-  const orderTypeInfo = ORDER_TYPE_OPTIONS.find(o => o.value === orderType)
 
   const toggleWatchlist = async () => {
     try {
@@ -218,7 +153,7 @@ export default function AssetDetail() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between mb-6">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-white">{assetInfo.name}</h1>
@@ -232,11 +167,11 @@ export default function AssetDetail() {
           </div>
           <p className="text-sm text-gray-500">{ticker} · {assetInfo.currency}</p>
         </div>
-        <div className="text-right">
+        <div className="text-left md:text-right mt-2 md:mt-0">
           <p className="text-3xl font-bold text-white">
             {assetInfo.price?.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <div className="flex items-center gap-2 justify-end">
+          <div className="flex items-center gap-2 md:justify-end">
             <PriceTag value={change} showSign className="text-sm" suffix={` ${assetInfo.currency}`} />
             <PriceTag value={changePercent} showSign className="text-sm" suffix="%" />
           </div>
@@ -251,7 +186,7 @@ export default function AssetDetail() {
             <button
               key={range.label}
               onClick={() => setSelectedRange(idx)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-2.5 py-1.5 text-xs md:px-3 md:text-sm rounded-lg font-medium transition-colors ${
                 selectedRange === idx
                   ? 'bg-white/10 text-white'
                   : 'text-gray-500 hover:text-white'
@@ -263,7 +198,8 @@ export default function AssetDetail() {
         </div>
 
         {chartData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={300}>
+          <div className="h-[220px] md:h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
               <XAxis
                 dataKey="date"
@@ -311,36 +247,16 @@ export default function AssetDetail() {
               />
             </LineChart>
           </ResponsiveContainer>
+          </div>
         ) : (
-          <div className="h-[300px] flex items-center justify-center text-gray-500">
+          <div className="h-[220px] md:h-[300px] flex items-center justify-center text-gray-500">
             Keine Chart-Daten verfügbar
           </div>
         )}
       </div>
 
-      {/* Panel Toggle: Kaufen / Order */}
-      <div className="flex bg-dark-card border border-dark-border rounded-xl p-1 mb-4">
-        <button
-          onClick={() => setActivePanel('buy')}
-          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
-            activePanel === 'buy' ? 'bg-dark-bg text-white' : 'text-gray-500'
-          }`}
-        >
-          Kaufen
-        </button>
-        <button
-          onClick={() => setActivePanel('order')}
-          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
-            activePanel === 'order' ? 'bg-dark-bg text-white' : 'text-gray-500'
-          }`}
-        >
-          Order aufgeben
-        </button>
-      </div>
-
       {/* Kauf-Panel */}
-      {activePanel === 'buy' && (
-      <div className="bg-dark-card border border-dark-border rounded-2xl p-6">
+      <div className="bg-dark-card border border-dark-border rounded-2xl p-4 md:p-6">
         <h2 className="text-lg font-semibold text-white mb-4">{assetInfo.name} kaufen</h2>
 
         <div className="space-y-4">
@@ -425,57 +341,22 @@ export default function AssetDetail() {
                 <span className="text-gray-400">Anzahl</span>
                 <span className="text-white">{quantity.toFixed(4)} Stk.</span>
               </div>
-              {selectedLeverage > 1 && leverageInfo && (
-                <>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Financing-Rate (p.a.)</span>
-                    <span className="text-gray-300">~{leverageInfo.annual_rate_percent}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Tägliche Kosten</span>
-                    <span className="text-gray-300">~{(positionSize * leverageInfo.daily_rate).toFixed(2)}€</span>
-                  </div>
-                  {stopLossPrice && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Liquidationskurs</span>
-                      <span className="text-accent-red">{stopLossPrice.toFixed(2)} {assetInfo.currency}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Liquidation bei</span>
-                    <span className="text-accent-red">{leverageInfo.liquidation_threshold_percent}% Margin-Verlust</span>
-                  </div>
-                </>
-              )}
-              {selectedLeverage <= 1 && stopLossPrice && (
+              {stopLossPrice && (
                 <div className="flex justify-between">
                   <span className="text-gray-400">Geschätzter Liquidationskurs</span>
                   <span className="text-accent-red">{stopLossPrice.toFixed(2)}</span>
+                </div>
+              )}
+              {selectedLeverage > 1 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Financing-Rate (p.a.)</span>
+                  <span className="text-gray-300">~5.5%</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-dark-border pt-2">
                 <span className="text-gray-400">Gebühr</span>
                 <span className="text-gray-300">1,00€</span>
               </div>
-            </div>
-          )}
-
-          {/* Risiko-Hinweis bei Hebel */}
-          {selectedLeverage > 1 && (
-            <div className={`rounded-xl p-4 text-sm ${
-              selectedLeverage >= 10
-                ? 'bg-red-500/10 border border-red-500/30 text-red-400'
-                : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
-            }`}>
-              <p className="font-medium mb-1">
-                {selectedLeverage >= 10 ? 'Hohes Risiko' : 'Erhöhtes Risiko'}
-              </p>
-              <p className="text-xs opacity-80">
-                {selectedLeverage >= 10
-                  ? `Mit ${selectedLeverage}x Hebel können kleine Kursbewegungen zu schneller Liquidation führen. Tägliche Finanzierungskosten von ~${leverageInfo ? leverageInfo.annual_rate_percent : '?'}% p.a. fallen an.`
-                  : `Gewinne und Verluste werden mit ${selectedLeverage}x multipliziert. Tägliche Finanzierungskosten von ~${leverageInfo ? leverageInfo.annual_rate_percent : '?'}% p.a. fallen an.`
-                }
-              </p>
             </div>
           )}
 
@@ -489,173 +370,6 @@ export default function AssetDetail() {
           </button>
         </div>
       </div>
-      )}
-
-      {/* Order-Panel */}
-      {activePanel === 'order' && (
-      <div className="bg-dark-card border border-dark-border rounded-2xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Order aufgeben</h2>
-
-        <div className="space-y-4">
-          {/* Order-Typ */}
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Order-Typ</label>
-            <div className="space-y-2">
-              {ORDER_TYPE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setOrderType(opt.value)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors text-left ${
-                    orderType === opt.value
-                      ? 'border-white/30 bg-white/5'
-                      : 'border-dark-border hover:border-gray-500'
-                  }`}
-                >
-                  <span className={`font-medium ${opt.color}`}>{opt.label}</span>
-                  <span className="text-xs text-gray-500">{opt.desc} ...</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Auslösepreis */}
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">
-              {orderTypeInfo?.desc ?? 'Auslösepreis'}
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                value={orderPrice}
-                onChange={(e) => setOrderPrice(e.target.value)}
-                placeholder={`Aktuell: ${assetInfo.price?.toFixed(2)}`}
-                className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-accent-green transition-colors"
-                min="0"
-                step="0.01"
-              />
-            </div>
-            {/* Schnell-Buttons relativ zum aktuellen Kurs */}
-            <div className="flex gap-2 mt-2">
-              {(orderType === 'limit_buy'
-                ? [-1, -2, -5, -10]
-                : [+1, +2, +5, +10]
-              ).map((pct) => (
-                <button
-                  key={pct}
-                  onClick={() => setOrderPrice((assetInfo.price * (1 + pct / 100)).toFixed(2))}
-                  className="flex-1 py-1.5 text-xs rounded-lg bg-dark-bg border border-dark-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
-                >
-                  {pct > 0 ? '+' : ''}{pct}%
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Kauflimit: Betrag + Hebel */}
-          {orderType === 'limit_buy' && (
-            <>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Betrag (€)</label>
-                <input
-                  type="number"
-                  value={orderAmount}
-                  onChange={(e) => setOrderAmount(e.target.value)}
-                  placeholder="Betrag in €"
-                  className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-accent-green transition-colors"
-                  min="0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">Hebel</label>
-                <div className="flex gap-2">
-                  {leverageOptions.map((lev) => (
-                    <button
-                      key={lev}
-                      onClick={() => setOrderLeverage(lev)}
-                      className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${
-                        orderLeverage === lev
-                          ? 'border-accent-green text-accent-green bg-accent-green/10'
-                          : 'border-dark-border text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      {lev}x
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Verkauf-Order: Position auswählen */}
-          {(orderType === 'limit_sell' || orderType === 'stop_loss') && (
-            <>
-              {positions.length === 0 ? (
-                <div className="bg-dark-bg rounded-xl p-4 text-center text-sm text-gray-500">
-                  Keine offenen Positionen in {ticker}
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Position</label>
-                  <div className="space-y-2">
-                    {positions.map((pos) => (
-                      <button
-                        key={pos.id}
-                        onClick={() => setOrderPositionId(pos.id.toString())}
-                        className={`w-full flex justify-between items-center px-4 py-3 rounded-xl border transition-colors ${
-                          orderPositionId === pos.id.toString()
-                            ? 'border-white/30 bg-white/5'
-                            : 'border-dark-border hover:border-gray-500'
-                        }`}
-                      >
-                        <span className="text-white text-sm">
-                          {pos.quantity?.toFixed(4)} Stk. @ {pos.entry_price?.toFixed(2)}
-                          {pos.leverage > 1 && (
-                            <span className="ml-2 text-xs text-yellow-400">{pos.leverage}x</span>
-                          )}
-                        </span>
-                        <PriceTag value={pos.unrealized_pnl} showSign className="text-xs" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {orderPositionId && (
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    Anzahl verkaufen
-                    <span className="text-gray-600 ml-1">(leer = alles)</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={orderSellQty}
-                    onChange={(e) => setOrderSellQty(e.target.value)}
-                    placeholder="Menge (optional)"
-                    className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-accent-green transition-colors"
-                    min="0"
-                    step="0.0001"
-                  />
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Order absenden */}
-          <button
-            onClick={handlePlaceOrder}
-            disabled={
-              placingOrder ||
-              !orderPrice ||
-              parseFloat(orderPrice) <= 0 ||
-              (orderType === 'limit_buy' && (!orderAmount || parseFloat(orderAmount) <= 0)) ||
-              (orderType !== 'limit_buy' && !orderPositionId)
-            }
-            className="w-full py-3 rounded-xl bg-accent-green text-black font-semibold hover:brightness-110 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            {placingOrder ? 'Wird gesetzt...' : 'Order aufgeben'}
-          </button>
-        </div>
-      </div>
-      )}
 
       {/* Bestätigungs-Modal */}
       <ConfirmModal
