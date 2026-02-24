@@ -7,31 +7,8 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from services.market_data import get_price, search_assets, get_history
-import yfinance as yf
 
 router = APIRouter(prefix="/market", tags=["Marktdaten"])
-
-
-@router.get("/debug/{ticker}")
-def debug_ticker(ticker: str):
-    """Debug: Testet yfinance direkt und gibt detaillierte Fehler zurück."""
-    result = {}
-    try:
-        t = yf.Ticker(ticker.upper())
-        info = t.info
-        result["info_keys"] = list(info.keys())[:20]
-        result["price"] = info.get("currentPrice") or info.get("regularMarketPrice")
-        result["name"] = info.get("shortName")
-    except Exception as e:
-        result["info_error"] = str(e)
-    try:
-        hist = yf.Ticker(ticker.upper()).history(period="5d", interval="1d")
-        result["history_rows"] = len(hist)
-        if not hist.empty:
-            result["last_close"] = float(hist["Close"].iloc[-1])
-    except Exception as e:
-        result["history_error"] = str(e)
-    return result
 
 
 @router.get("/price/{ticker}")

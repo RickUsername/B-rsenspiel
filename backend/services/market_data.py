@@ -89,8 +89,13 @@ def fetch_and_cache_price(ticker: str, db: Session) -> Optional[dict]:
         # Preis aus Minutendaten holen – viel aktueller als .info
         price = _get_realtime_price(yf_ticker)
 
-        # Metadaten aus .info holen (Name, Währung, Typ) – hier ist Verzögerung OK
-        info = yf_ticker.info
+        # Metadaten aus .info holen – kann auf Servern rate-limited sein
+        info = {}
+        try:
+            info = yf_ticker.info
+        except Exception as e:
+            logger.warning(f"yfinance .info rate-limited für {ticker}: {e}")
+
         if price is None:
             price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
         if price is None:
@@ -99,6 +104,15 @@ def fetch_and_cache_price(ticker: str, db: Session) -> Optional[dict]:
         currency = info.get("currency", "USD")
         name = info.get("shortName") or info.get("longName") or ticker
         previous_close = info.get("previousClose") or info.get("regularMarketPreviousClose")
+
+        # Wenn .info leer war, versuche previous_close aus history zu schätzen
+        if previous_close is None:
+            try:
+                hist = yf_ticker.history(period="5d", interval="1d")
+                if len(hist) >= 2:
+                    previous_close = float(hist["Close"].iloc[-2])
+            except Exception:
+                pass
 
         # Asset-Typ bestimmen
         quote_type = info.get("quoteType", "").upper()
@@ -109,7 +123,7 @@ def fetch_and_cache_price(ticker: str, db: Session) -> Optional[dict]:
         elif quote_type == "INDEX":
             asset_type = AssetType.INDEX
         else:
-            asset_type = AssetType.STOCK
+            asset_type = detect_asset_type(ticker) if not quote_type else AssetType.STOCK
 
         # Cache aktualisieren oder erstellen
         cached = db.query(PriceCache).filter(PriceCache.ticker == ticker).first()
