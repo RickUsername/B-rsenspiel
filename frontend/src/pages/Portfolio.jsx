@@ -9,6 +9,7 @@ import { useWebSocket } from '../hooks/useWebSocket'
 import api from '../hooks/api'
 import PriceTag from '../components/PriceTag'
 import ConfirmModal from '../components/ConfirmModal'
+import PositionDetailModal from '../components/PositionDetailModal'
 
 const ORDER_TYPE_LABEL = {
   limit_buy: 'Kauflimit',
@@ -32,6 +33,7 @@ export default function Portfolio() {
   const [selling, setSelling] = useState(false)
   const [activeTab, setActiveTab] = useState('positions') // 'positions' | 'orders'
   const [pnlMode, setPnlMode] = useState('pnl_eur') // 'pnl_eur' | 'pnl_pct' | 'day_eur' | 'day_pct'
+  const [detailPosition, setDetailPosition] = useState(null)
 
   const fetchPositions = async () => {
     try {
@@ -58,6 +60,14 @@ export default function Portfolio() {
 
   // Live-Positionen vom WebSocket verwenden
   const livePositions = wsData?.positions ?? positions
+
+  // Detail-Position mit Live-Daten synchronisieren
+  useEffect(() => {
+    if (detailPosition) {
+      const updated = livePositions.find((p) => p.id === detailPosition.id)
+      if (updated) setDetailPosition(updated)
+    }
+  }, [livePositions])
 
   const openSellModal = (pos) => {
     setSellModal(pos)
@@ -184,11 +194,12 @@ export default function Portfolio() {
               {livePositions.map((pos) => (
                 <div
                   key={pos.id}
-                  className="bg-dark-card border border-dark-border rounded-2xl p-4"
+                  onClick={() => setDetailPosition(pos)}
+                  className="bg-dark-card border border-dark-border rounded-2xl p-4 cursor-pointer hover:border-gray-500 transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     {/* Asset Info */}
-                    <Link to={`/asset/${pos.ticker}`} className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3">
                         <div>
                           <div className="flex items-center gap-2">
@@ -202,7 +213,7 @@ export default function Portfolio() {
                           <p className="text-xs text-gray-500 truncate">{pos.name}</p>
                         </div>
                       </div>
-                    </Link>
+                    </div>
 
                     {/* Menge & Preise */}
                     <div className="text-right mx-4">
@@ -241,7 +252,7 @@ export default function Portfolio() {
 
                     {/* Verkaufen Button */}
                     <button
-                      onClick={() => openSellModal(pos)}
+                      onClick={(e) => { e.stopPropagation(); openSellModal(pos) }}
                       className="ml-4 px-4 py-2 rounded-xl bg-accent-red/10 text-accent-red text-sm font-medium hover:bg-accent-red/20 transition-colors"
                     >
                       Verkaufen
@@ -314,6 +325,18 @@ export default function Portfolio() {
             </div>
           )}
         </>
+      )}
+
+      {/* Position Detail Modal */}
+      {detailPosition && (
+        <PositionDetailModal
+          position={detailPosition}
+          onClose={() => setDetailPosition(null)}
+          onSell={(pos) => {
+            setDetailPosition(null)
+            openSellModal(pos)
+          }}
+        />
       )}
 
       {/* Sell Modal mit Teilverkauf */}

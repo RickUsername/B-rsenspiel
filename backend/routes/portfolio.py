@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func as sa_func
 
 from database import get_db
-from models import User, Account, Transaction, Position, PriceCache, Watchlist, PortfolioSnapshot
+from models import User, Account, Transaction, Position, PriceCache, Watchlist, PortfolioSnapshot, Trade
 from auth import get_current_user
 
 router = APIRouter(prefix="/account", tags=["Konto & Portfolio"])
@@ -132,6 +132,37 @@ def get_transactions(
 
     transactions = query.order_by(Transaction.created_at.desc()).all()
 
+    # Lade alle Trades des Accounts für Timestamp-Matching
+    trades = db.query(Trade).filter(Trade.account_id == account.id).all()
+
+    def find_trade_details(transaction):
+        """Verknüpft eine Transaktion mit dem zugehörigen Trade per Timestamp-Matching."""
+        if transaction.type not in ("trade_buy", "trade_sell", "margin_call"):
+            return None
+        if not transaction.created_at:
+            return None
+
+        direction_map = {"trade_buy": "buy", "trade_sell": "sell", "margin_call": "sell"}
+        expected_direction = direction_map[transaction.type]
+
+        for trade in trades:
+            if not trade.created_at:
+                continue
+            time_diff = abs((trade.created_at - transaction.created_at).total_seconds())
+            if time_diff <= 2 and trade.direction == expected_direction:
+                return {
+                    "trade_id": trade.id,
+                    "ticker": trade.ticker,
+                    "name": trade.name,
+                    "direction": trade.direction,
+                    "quantity": trade.quantity,
+                    "price": trade.price,
+                    "leverage": trade.leverage,
+                    "fee": trade.fee,
+                    "realized_pnl": trade.realized_pnl,
+                }
+        return None
+
     return [
         {
             "id": t.id,
@@ -139,6 +170,7 @@ def get_transactions(
             "type": t.type,
             "description": t.description,
             "created_at": t.created_at.isoformat() if t.created_at else None,
+            "trade_details": find_trade_details(t),
         }
         for t in transactions
     ]
@@ -194,6 +226,7 @@ def get_positions(
             "unrealized_pnl": round(unrealized_pnl_after_financing, 2),
             "pnl_percent": round(pnl_percent, 2),
             "accrued_financing": round(pos.accrued_financing, 2),
+            "financing_rate": pos.financing_rate,
             "stop_loss_price": pos.stop_loss_price,
             "created_at": pos.created_at.isoformat() if pos.created_at else None,
             "day_change_eur": day_change_eur,

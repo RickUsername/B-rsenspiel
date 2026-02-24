@@ -1,5 +1,5 @@
 """
-API-Routen für Limit- und Stop-Orders.
+API-Routen für Limit- und Stop-Orders mit Liquiditätsprüfung.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -53,6 +53,24 @@ def create_order(
     if request.order_type == "limit_buy":
         if not request.amount_eur or request.amount_eur <= 0:
             raise HTTPException(status_code=400, detail="Betrag für Kauf-Order erforderlich")
+
+        # Summe aller offenen Kauf-Orders berechnen
+        from sqlalchemy import func as sa_func
+        reserved = db.query(
+            sa_func.coalesce(sa_func.sum(Order.amount_eur), 0.0)
+        ).filter(
+            Order.account_id == account.id,
+            Order.order_type == "limit_buy",
+            Order.status == "pending",
+        ).scalar()
+
+        available = account.balance - float(reserved)
+        total_needed = request.amount_eur + 1.0  # +1€ Gebühr
+        if total_needed > available:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Nicht genug Liquidität. Verfügbar: {available:.2f}€ (abzgl. offener Orders), benötigt: {total_needed:.2f}€",
+            )
 
     elif request.order_type in ("limit_sell", "stop_loss"):
         if not request.position_id:

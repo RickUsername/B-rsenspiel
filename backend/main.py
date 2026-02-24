@@ -3,6 +3,7 @@ Börsenspiel – FastAPI Hauptanwendung.
 Initialisiert die Datenbank, startet den Scheduler und konfiguriert CORS.
 Beinhaltet WebSocket-Endpoint für Live-Portfolio-Updates.
 """
+# reload trigger
 
 import json
 from contextlib import asynccontextmanager
@@ -93,6 +94,7 @@ async def websocket_endpoint(websocket: WebSocket, account_id: int):
                 for pos in positions:
                     cached = db.query(PriceCache).filter(PriceCache.ticker == pos.ticker).first()
                     current_price = cached.price if cached else pos.entry_price
+                    currency = cached.currency if cached else "USD"
 
                     price_diff = current_price - pos.entry_price
                     unrealized_pnl = price_diff * pos.quantity * pos.leverage
@@ -117,14 +119,19 @@ async def websocket_endpoint(websocket: WebSocket, account_id: int):
                         "id": pos.id,
                         "ticker": pos.ticker,
                         "name": pos.name,
+                        "asset_type": pos.asset_type,
                         "quantity": pos.quantity,
                         "entry_price": pos.entry_price,
                         "current_price": current_price,
+                        "currency": currency,
                         "leverage": pos.leverage,
                         "unrealized_pnl": round(unrealized_pnl, 2),
                         "pnl_percent": round(pnl_percent, 2),
                         "accrued_financing": round(pos.accrued_financing, 2),
+                        "financing_rate": pos.financing_rate,
                         "margin_used": pos.margin_used,
+                        "stop_loss_price": pos.stop_loss_price,
+                        "created_at": pos.created_at.isoformat() if pos.created_at else None,
                         "day_change_eur": day_change_eur,
                         "day_change_percent": day_change_percent,
                     })
