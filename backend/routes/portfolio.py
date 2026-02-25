@@ -6,7 +6,7 @@ import csv
 import io
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -255,8 +255,6 @@ def export_transactions_csv(
     rows = _build_export_rows(account, db)
 
     output = io.StringIO()
-    # BOM für Excel UTF-8-Erkennung
-    output.write("\ufeff")
     writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_MINIMAL)
 
     # Header
@@ -276,10 +274,10 @@ def export_transactions_csv(
             f'{r["realisierter_pnl"]:.2f}'.replace(".", ",") if r["realisierter_pnl"] is not None else "",
         ])
 
-    output.seek(0)
     now_str = datetime.now().strftime("%Y-%m-%d")
-    return StreamingResponse(
-        iter([output.getvalue()]),
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+    return Response(
+        content=csv_bytes,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="Kontoauszug_{now_str}.csv"'},
     )
@@ -291,7 +289,10 @@ def export_transactions_pdf(
     db: Session = Depends(get_db),
 ):
     """Exportiert den Kontoauszug als PDF."""
-    from fpdf import FPDF
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        raise HTTPException(status_code=500, detail="PDF-Bibliothek (fpdf2) nicht installiert")
 
     account = db.query(Account).filter(Account.user_id == user.id).first()
     if not account:
@@ -347,8 +348,8 @@ def export_transactions_pdf(
 
     pdf_bytes = pdf.output()
     now_str = datetime.now().strftime("%Y-%m-%d")
-    return StreamingResponse(
-        iter([pdf_bytes]),
+    return Response(
+        content=bytes(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="Kontoauszug_{now_str}.pdf"'},
     )
