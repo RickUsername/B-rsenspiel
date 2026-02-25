@@ -61,7 +61,8 @@ export default function PositionDetailModal({ position, onClose, onSell }) {
   const currencySymbol = currency === 'USD' ? '$' : '€'
 
   // Berechnungen
-  const positionSize = pos.entry_price * pos.quantity * leverage
+  // quantity enthält den Hebel bereits (quantity = margin * leverage / price)
+  const positionSize = pos.entry_price * pos.quantity
   const currentValue = pos.margin_used + (pos.unrealized_pnl || 0)
   const pnlPercent = pos.pnl_percent || 0
 
