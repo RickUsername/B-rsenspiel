@@ -213,12 +213,15 @@ def sell_position(
     )
     db.add(trade)
 
-    # Transaction-Eintrag
+    # Transaction-Eintrag: payout = tatsächlicher Rückfluss aufs Konto
     transaction = Transaction(
         account_id=account_id,
-        amount=net_pnl,
+        amount=payout,
         type="trade_sell",
-        description=f"Verkauf {qty_sold:.4f}x {position.name} ({position.ticker}) @ {current_price:.2f} | P&L: {net_pnl:+.2f}€",
+        description=(
+            f"Verkauf {qty_sold:.4f}x {position.name} ({position.ticker}) @ {current_price:.2f}"
+            f" | Auszahlung: {payout:.2f}€ (Margin: {margin_portion:.2f}€ + P&L: {net_pnl:+.2f}€)"
+        ),
     )
     db.add(transaction)
 

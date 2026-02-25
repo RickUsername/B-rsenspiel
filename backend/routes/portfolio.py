@@ -227,11 +227,18 @@ def _build_export_rows(account, db):
     rows = []
     for t in transactions:
         trade = find_trade(t)
+
+        # Kassenfluss = tatsächlicher Geldfluss aufs/vom Konto
+        # Für Käufe: -(Margin + Gebühr) = Geld raus
+        # Für Verkäufe: Auszahlung = Margin zurück + P&L = Geld rein
+        # Für Einzahlungen/Gebühren/Financing: amount direkt
+        kassenfluss = t.amount
+
         rows.append({
             "datum": t.created_at.strftime("%d.%m.%Y %H:%M") if t.created_at else "",
             "typ": TYPE_LABELS.get(t.type, t.type),
             "beschreibung": t.description or "",
-            "betrag": t.amount,
+            "kassenfluss": kassenfluss,
             "asset": f"{trade.name} ({trade.ticker})" if trade else "",
             "menge": trade.quantity if trade else None,
             "kurs": trade.price if trade else None,
@@ -257,15 +264,20 @@ def export_transactions_csv(
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_MINIMAL)
 
-    # Header
-    writer.writerow(["Datum", "Typ", "Beschreibung", "Betrag (€)", "Asset", "Menge", "Kurs ($)", "Hebel", "Gebühr (€)", "Realisierter P&L (€)"])
+    # Kontoinfo-Kopfzeile
+    writer.writerow([f"Kontostand Boersenspiel - {user.username}: {account.balance:.2f} EUR"])
+    writer.writerow([f"Erstellt am {datetime.now().strftime('%d.%m.%Y %H:%M')}"])
+    writer.writerow([])
+
+    # Tabellen-Header
+    writer.writerow(["Datum", "Typ", "Beschreibung", "Kassenfluss (€)", "Asset", "Menge", "Kurs ($)", "Hebel", "Gebühr (€)", "P&L (€)"])
 
     for r in rows:
         writer.writerow([
             r["datum"],
             r["typ"],
             r["beschreibung"],
-            f'{r["betrag"]:.2f}'.replace(".", ","),
+            f'{r["kassenfluss"]:.2f}'.replace(".", ","),
             r["asset"],
             f'{r["menge"]:.4f}'.replace(".", ",") if r["menge"] is not None else "",
             f'{r["kurs"]:.2f}'.replace(".", ",") if r["kurs"] is not None else "",
@@ -309,11 +321,11 @@ def export_transactions_pdf(
     pdf.cell(0, 10, "Kontoauszug", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 9)
     pdf.cell(0, 6, f"Erstellt am {datetime.now().strftime('%d.%m.%Y %H:%M')} | Nutzer: {user.username}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 6, f"Kontostand: {account.balance:.2f} EUR", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Kontostand Boersenspiel - {user.username}: {account.balance:.2f} EUR", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
     # Tabellen-Header
-    headers = ["Datum", "Typ", "Beschreibung", "Betrag", "Asset", "Menge", "Kurs", "Hebel", "Gebuehr", "P&L"]
+    headers = ["Datum", "Typ", "Beschreibung", "Kassenfluss", "Asset", "Menge", "Kurs", "Hebel", "Gebuehr", "P&L"]
     col_widths = [32, 28, 70, 24, 40, 20, 22, 14, 18, 22]
 
     pdf.set_font("Helvetica", "B", 8)
@@ -333,7 +345,7 @@ def export_transactions_pdf(
         else:
             pdf.set_fill_color(255, 255, 255)
 
-        betrag_str = f'{r["betrag"]:.2f} EUR'
+        betrag_str = f'{r["kassenfluss"]:.2f} EUR'
         menge_str = f'{r["menge"]:.4f}' if r["menge"] is not None else ""
         kurs_str = f'${r["kurs"]:.2f}' if r["kurs"] is not None else ""
         hebel_str = f'{r["hebel"]}x' if r["hebel"] else ""

@@ -127,12 +127,15 @@ def liquidate_position(position: Position, current_price: float, db: Session):
     )
     db.add(trade)
 
-    # Transaction-Eintrag
+    # Transaction-Eintrag: payout = tatsächlicher Rückfluss aufs Konto
     transaction = Transaction(
         account_id=account.id,
-        amount=realized_pnl,
+        amount=payout,
         type="margin_call",
-        description=f"Margin Call – Position {position.ticker} liquidiert",
+        description=(
+            f"Margin Call – Position {position.ticker} liquidiert"
+            f" | Auszahlung: {payout:.2f}€ (P&L: {realized_pnl:+.2f}€)"
+        ),
     )
     db.add(transaction)
 
