@@ -2,7 +2,11 @@
 API-Routen für Konto und Portfolio: Balance, Einzahlungen, Positionen.
 """
 
+import csv
+import io
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -184,6 +188,170 @@ def get_transactions(
         }
         for t in transactions
     ]
+
+
+TYPE_LABELS = {
+    "deposit": "Einzahlung",
+    "trade_buy": "Kauf",
+    "trade_sell": "Verkauf",
+    "financing": "Finanzierungskosten",
+    "margin_call": "Margin Call",
+    "fee": "Gebühr",
+}
+
+
+def _build_export_rows(account, db):
+    """Bereitet alle Transaktionen als flache Zeilen für Export auf."""
+    transactions = (
+        db.query(Transaction)
+        .filter(Transaction.account_id == account.id)
+        .order_by(Transaction.created_at.desc())
+        .all()
+    )
+    trades = db.query(Trade).filter(Trade.account_id == account.id).all()
+
+    def find_trade(tx):
+        if tx.type not in ("trade_buy", "trade_sell", "margin_call"):
+            return None
+        if not tx.created_at:
+            return None
+        direction_map = {"trade_buy": "buy", "trade_sell": "sell", "margin_call": "sell"}
+        expected = direction_map[tx.type]
+        for trade in trades:
+            if not trade.created_at:
+                continue
+            if abs((trade.created_at - tx.created_at).total_seconds()) <= 2 and trade.direction == expected:
+                return trade
+        return None
+
+    rows = []
+    for t in transactions:
+        trade = find_trade(t)
+        rows.append({
+            "datum": t.created_at.strftime("%d.%m.%Y %H:%M") if t.created_at else "",
+            "typ": TYPE_LABELS.get(t.type, t.type),
+            "beschreibung": t.description or "",
+            "betrag": t.amount,
+            "asset": f"{trade.name} ({trade.ticker})" if trade else "",
+            "menge": trade.quantity if trade else None,
+            "kurs": trade.price if trade else None,
+            "hebel": trade.leverage if trade and trade.leverage > 1 else None,
+            "gebuehr": trade.fee if trade else None,
+            "realisierter_pnl": trade.realized_pnl if trade else None,
+        })
+    return rows
+
+
+@router.get("/transactions/export/csv")
+def export_transactions_csv(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Exportiert den Kontoauszug als CSV (Semikolon-getrennt für deutsches Excel)."""
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    rows = _build_export_rows(account, db)
+
+    output = io.StringIO()
+    # BOM für Excel UTF-8-Erkennung
+    output.write("\ufeff")
+    writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+
+    # Header
+    writer.writerow(["Datum", "Typ", "Beschreibung", "Betrag (€)", "Asset", "Menge", "Kurs ($)", "Hebel", "Gebühr (€)", "Realisierter P&L (€)"])
+
+    for r in rows:
+        writer.writerow([
+            r["datum"],
+            r["typ"],
+            r["beschreibung"],
+            f'{r["betrag"]:.2f}'.replace(".", ","),
+            r["asset"],
+            f'{r["menge"]:.4f}'.replace(".", ",") if r["menge"] is not None else "",
+            f'{r["kurs"]:.2f}'.replace(".", ",") if r["kurs"] is not None else "",
+            f'{r["hebel"]}x' if r["hebel"] else "",
+            f'{r["gebuehr"]:.2f}'.replace(".", ",") if r["gebuehr"] is not None else "",
+            f'{r["realisierter_pnl"]:.2f}'.replace(".", ",") if r["realisierter_pnl"] is not None else "",
+        ])
+
+    output.seek(0)
+    now_str = datetime.now().strftime("%Y-%m-%d")
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="Kontoauszug_{now_str}.csv"'},
+    )
+
+
+@router.get("/transactions/export/pdf")
+def export_transactions_pdf(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Exportiert den Kontoauszug als PDF."""
+    from fpdf import FPDF
+
+    account = db.query(Account).filter(Account.user_id == user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Kein Konto gefunden")
+
+    rows = _build_export_rows(account, db)
+
+    pdf = FPDF(orientation="L", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    # Titel
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "Kontoauszug", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(0, 6, f"Erstellt am {datetime.now().strftime('%d.%m.%Y %H:%M')} | Nutzer: {user.username}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Kontostand: {account.balance:.2f} EUR", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    # Tabellen-Header
+    headers = ["Datum", "Typ", "Beschreibung", "Betrag", "Asset", "Menge", "Kurs", "Hebel", "Gebuehr", "P&L"]
+    col_widths = [32, 28, 70, 24, 40, 20, 22, 14, 18, 22]
+
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_fill_color(40, 40, 40)
+    pdf.set_text_color(255, 255, 255)
+    for i, h in enumerate(headers):
+        pdf.cell(col_widths[i], 7, h, border=1, fill=True, align="C")
+    pdf.ln()
+
+    # Datenzeilen
+    pdf.set_font("Helvetica", "", 7)
+    pdf.set_text_color(0, 0, 0)
+    for idx, r in enumerate(rows):
+        # Abwechselnde Zeilenfarbe
+        if idx % 2 == 0:
+            pdf.set_fill_color(245, 245, 245)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+
+        betrag_str = f'{r["betrag"]:.2f} EUR'
+        menge_str = f'{r["menge"]:.4f}' if r["menge"] is not None else ""
+        kurs_str = f'${r["kurs"]:.2f}' if r["kurs"] is not None else ""
+        hebel_str = f'{r["hebel"]}x' if r["hebel"] else ""
+        gebuehr_str = f'{r["gebuehr"]:.2f}' if r["gebuehr"] is not None else ""
+        pnl_str = f'{r["realisierter_pnl"]:.2f}' if r["realisierter_pnl"] is not None else ""
+
+        vals = [r["datum"], r["typ"], r["beschreibung"], betrag_str, r["asset"], menge_str, kurs_str, hebel_str, gebuehr_str, pnl_str]
+        for i, v in enumerate(vals):
+            align = "R" if i in (3, 5, 6, 8, 9) else "L"
+            pdf.cell(col_widths[i], 6, str(v)[:40], border=1, fill=True, align=align)
+        pdf.ln()
+
+    pdf_bytes = pdf.output()
+    now_str = datetime.now().strftime("%Y-%m-%d")
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Kontoauszug_{now_str}.pdf"'},
+    )
 
 
 @router.get("/positions")
