@@ -496,9 +496,9 @@ export default function AssetDetail() {
             </div>
             {/* Schnell-Buttons relativ zum aktuellen Kurs */}
             <div className="flex gap-2 mt-2">
-              {(orderType === 'limit_buy'
-                ? [-1, -2, -5, -10]
-                : [+1, +2, +5, +10]
+              {(orderType === 'limit_sell'
+                ? [+1, +2, +5, +10]
+                : [-1, -2, -5, -10]
               ).map((pct) => (
                 <button
                   key={pct}

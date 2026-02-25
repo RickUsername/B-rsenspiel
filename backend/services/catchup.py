@@ -226,18 +226,22 @@ def _process_missed_orders(db: Session, orders: list, price_history: dict):
             continue
 
         triggered_price = None
-        for _ts, row in hist.iterrows():
+        triggered_at = None
+        for ts, row in hist.iterrows():
             low = row["Low"]
             high = row["High"]
 
             if order.order_type == "limit_buy" and low <= order.limit_price:
                 triggered_price = order.limit_price
+                triggered_at = ts
                 break
             elif order.order_type == "limit_sell" and high >= order.limit_price:
                 triggered_price = order.limit_price
+                triggered_at = ts
                 break
             elif order.order_type == "stop_loss" and low <= order.limit_price:
                 triggered_price = order.limit_price
+                triggered_at = ts
                 break
 
         if triggered_price is None:
@@ -279,10 +283,17 @@ def _process_missed_orders(db: Session, orders: list, price_history: dict):
                 )
 
             order.status = "executed"
-            order.executed_at = datetime.now(timezone.utc)
+            # Echten historischen Auslösezeitpunkt verwenden
+            if triggered_at is not None:
+                exec_time = triggered_at.to_pydatetime() if hasattr(triggered_at, 'to_pydatetime') else triggered_at
+                if exec_time.tzinfo is None:
+                    exec_time = exec_time.replace(tzinfo=timezone.utc)
+                order.executed_at = exec_time
+            else:
+                order.executed_at = datetime.now(timezone.utc)
             print(
                 f"[Catch-up] Order ausgeführt: {order.order_type} "
-                f"{order.ticker} @ {triggered_price:.4f}"
+                f"{order.ticker} @ {triggered_price:.4f} (Zeitpunkt: {order.executed_at})"
             )
             db.commit()
 
