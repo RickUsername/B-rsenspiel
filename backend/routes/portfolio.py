@@ -67,14 +67,13 @@ def get_balance(
         Transaction.type == "deposit",
     ).scalar()
 
-    # Summe aller offenen Kauf-Orders (reserviertes Geld)
-    reserved_by_orders = float(db.query(
-        sa_func.coalesce(sa_func.sum(Order.amount_eur), 0.0)
-    ).filter(
+    # Reserviertes Geld: Summe aller offenen Kauf-Orders
+    pending_buy_orders = db.query(Order).filter(
         Order.account_id == account.id,
         Order.order_type == "limit_buy",
         Order.status == "pending",
-    ).scalar())
+    ).all()
+    reserved_by_orders = sum(o.amount_eur or 0.0 for o in pending_buy_orders)
 
     return BalanceResponse(
         balance=round(account.balance, 2),
