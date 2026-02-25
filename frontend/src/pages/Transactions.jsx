@@ -174,8 +174,9 @@ export default function Transactions() {
       a.download = `Kontoauszug_${date}.${format}`
       a.click()
       window.URL.revokeObjectURL(url)
-    } catch {
-      alert('Export fehlgeschlagen')
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.response?.status || err.message
+      alert(`Export fehlgeschlagen: ${detail}`)
     }
   }
 
