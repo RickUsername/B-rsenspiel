@@ -9,6 +9,12 @@ import api from '../hooks/api'
 import PriceTag from '../components/PriceTag'
 import ConfirmModal from '../components/ConfirmModal'
 
+const ORDER_TYPE_OPTIONS = [
+  { value: 'limit_buy', label: 'Kauflimit', desc: 'Kauft wenn Preis sinkt auf', color: 'text-accent-green' },
+  { value: 'limit_sell', label: 'Verkauflimit', desc: 'Verkauft wenn Preis steigt auf', color: 'text-blue-400' },
+  { value: 'stop_loss', label: 'Stop-Loss', desc: 'Verkauft wenn Preis fällt auf', color: 'text-accent-red' },
+]
+
 const TIME_RANGES = [
   { label: '1T', period: '1d', interval: '5m' },
   { label: '1W', period: '5d', interval: '15m' },
@@ -30,10 +36,21 @@ export default function AssetDetail() {
   const [buying, setBuying] = useState(false)
   const [inWatchlist, setInWatchlist] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [positions, setPositions] = useState([])
+  const [activePanel, setActivePanel] = useState('buy') // 'buy' | 'order'
+  // Order form state
+  const [orderType, setOrderType] = useState('limit_buy')
+  const [orderPrice, setOrderPrice] = useState('')
+  const [orderAmount, setOrderAmount] = useState('')
+  const [orderLeverage, setOrderLeverage] = useState(1)
+  const [orderPositionId, setOrderPositionId] = useState('')
+  const [orderSellQty, setOrderSellQty] = useState('')
+  const [placingOrder, setPlacingOrder] = useState(false)
 
   useEffect(() => {
     fetchAssetData()
     checkWatchlist()
+    fetchPositionsForTicker()
   }, [ticker])
 
   useEffect(() => {
@@ -74,6 +91,47 @@ export default function AssetDetail() {
       // Ignore
     }
   }
+
+  const fetchPositionsForTicker = async () => {
+    try {
+      const res = await api.get('/account/positions')
+      setPositions(res.data.filter(p => p.ticker === ticker))
+    } catch (err) {
+      // Ignore
+    }
+  }
+
+  const handlePlaceOrder = async () => {
+    const price = parseFloat(orderPrice)
+    if (!price || price <= 0) return
+
+    setPlacingOrder(true)
+    try {
+      const payload = {
+        ticker,
+        order_type: orderType,
+        limit_price: price,
+      }
+      if (orderType === 'limit_buy') {
+        payload.amount_eur = parseFloat(orderAmount)
+        payload.leverage = orderLeverage
+      } else {
+        payload.position_id = parseInt(orderPositionId)
+        if (orderSellQty) payload.sell_quantity = parseFloat(orderSellQty)
+      }
+      await api.post('/orders', payload)
+      setOrderPrice('')
+      setOrderAmount('')
+      setOrderSellQty('')
+      alert('Order gesetzt!')
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Order fehlgeschlagen')
+    } finally {
+      setPlacingOrder(false)
+    }
+  }
+
+  const orderTypeInfo = ORDER_TYPE_OPTIONS.find(o => o.value === orderType)
 
   const toggleWatchlist = async () => {
     try {
@@ -255,7 +313,28 @@ export default function AssetDetail() {
         )}
       </div>
 
+      {/* Panel Toggle: Kaufen / Order */}
+      <div className="flex bg-dark-card border border-dark-border rounded-xl p-1 mb-4">
+        <button
+          onClick={() => setActivePanel('buy')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+            activePanel === 'buy' ? 'bg-dark-bg text-white' : 'text-gray-500'
+          }`}
+        >
+          Kaufen
+        </button>
+        <button
+          onClick={() => setActivePanel('order')}
+          className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+            activePanel === 'order' ? 'bg-dark-bg text-white' : 'text-gray-500'
+          }`}
+        >
+          Order aufgeben
+        </button>
+      </div>
+
       {/* Kauf-Panel */}
+      {activePanel === 'buy' && (
       <div className="bg-dark-card border border-dark-border rounded-2xl p-4 md:p-6">
         <h2 className="text-lg font-semibold text-white mb-4">{assetInfo.name} kaufen</h2>
 
@@ -370,6 +449,173 @@ export default function AssetDetail() {
           </button>
         </div>
       </div>
+      )}
+
+      {/* Order-Panel */}
+      {activePanel === 'order' && (
+      <div className="bg-dark-card border border-dark-border rounded-2xl p-4 md:p-6">
+        <h2 className="text-lg font-semibold text-white mb-4">Order aufgeben</h2>
+
+        <div className="space-y-4">
+          {/* Order-Typ */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Order-Typ</label>
+            <div className="space-y-2">
+              {ORDER_TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setOrderType(opt.value)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors text-left ${
+                    orderType === opt.value
+                      ? 'border-white/30 bg-white/5'
+                      : 'border-dark-border hover:border-gray-500'
+                  }`}
+                >
+                  <span className={`font-medium ${opt.color}`}>{opt.label}</span>
+                  <span className="text-xs text-gray-500">{opt.desc} ...</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Auslösepreis */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">
+              {orderTypeInfo?.desc ?? 'Auslösepreis'}
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                value={orderPrice}
+                onChange={(e) => setOrderPrice(e.target.value)}
+                placeholder={`Aktuell: ${assetInfo.price?.toFixed(2)}`}
+                className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-accent-green transition-colors"
+                min="0"
+                step="0.01"
+              />
+            </div>
+            {/* Schnell-Buttons relativ zum aktuellen Kurs */}
+            <div className="flex gap-2 mt-2">
+              {(orderType === 'limit_buy'
+                ? [-1, -2, -5, -10]
+                : [+1, +2, +5, +10]
+              ).map((pct) => (
+                <button
+                  key={pct}
+                  onClick={() => setOrderPrice((assetInfo.price * (1 + pct / 100)).toFixed(2))}
+                  className="flex-1 py-1.5 text-xs rounded-lg bg-dark-bg border border-dark-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+                >
+                  {pct > 0 ? '+' : ''}{pct}%
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Kauflimit: Betrag + Hebel */}
+          {orderType === 'limit_buy' && (
+            <>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Betrag (€)</label>
+                <input
+                  type="number"
+                  value={orderAmount}
+                  onChange={(e) => setOrderAmount(e.target.value)}
+                  placeholder="Betrag in €"
+                  className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-accent-green transition-colors"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Hebel</label>
+                <div className="flex gap-2">
+                  {leverageOptions.map((lev) => (
+                    <button
+                      key={lev}
+                      onClick={() => setOrderLeverage(lev)}
+                      className={`flex-1 py-2 text-sm rounded-lg border transition-colors ${
+                        orderLeverage === lev
+                          ? 'border-accent-green text-accent-green bg-accent-green/10'
+                          : 'border-dark-border text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      {lev}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Verkauf-Order: Position auswählen */}
+          {(orderType === 'limit_sell' || orderType === 'stop_loss') && (
+            <>
+              {positions.length === 0 ? (
+                <div className="bg-dark-bg rounded-xl p-4 text-center text-sm text-gray-500">
+                  Keine offenen Positionen in {ticker}
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Position</label>
+                  <div className="space-y-2">
+                    {positions.map((pos) => (
+                      <button
+                        key={pos.id}
+                        onClick={() => setOrderPositionId(pos.id.toString())}
+                        className={`w-full flex justify-between items-center px-4 py-3 rounded-xl border transition-colors ${
+                          orderPositionId === pos.id.toString()
+                            ? 'border-white/30 bg-white/5'
+                            : 'border-dark-border hover:border-gray-500'
+                        }`}
+                      >
+                        <span className="text-white text-sm">
+                          {pos.quantity?.toFixed(4)} Stk. @ {pos.entry_price?.toFixed(2)}
+                          {pos.leverage > 1 && (
+                            <span className="ml-2 text-xs text-yellow-400">{pos.leverage}x</span>
+                          )}
+                        </span>
+                        <PriceTag value={pos.unrealized_pnl} showSign className="text-xs" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {orderPositionId && (
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">
+                    Anzahl verkaufen
+                    <span className="text-gray-600 ml-1">(leer = alles)</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={orderSellQty}
+                    onChange={(e) => setOrderSellQty(e.target.value)}
+                    placeholder="Menge (optional)"
+                    className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-accent-green transition-colors"
+                    min="0"
+                    step="0.0001"
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Order absenden */}
+          <button
+            onClick={handlePlaceOrder}
+            disabled={
+              placingOrder ||
+              !orderPrice ||
+              parseFloat(orderPrice) <= 0 ||
+              (orderType === 'limit_buy' && (!orderAmount || parseFloat(orderAmount) <= 0)) ||
+              (orderType !== 'limit_buy' && !orderPositionId)
+            }
+            className="w-full py-3 rounded-xl bg-accent-green text-black font-semibold hover:brightness-110 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            {placingOrder ? 'Wird gesetzt...' : 'Order aufgeben'}
+          </button>
+        </div>
+      </div>
+      )}
 
       {/* Bestätigungs-Modal */}
       <ConfirmModal
