@@ -2,7 +2,7 @@ name: Deploy Frontend to GitHub Pages
 
 on:
   push:
-    branches: [claude/stock-trading-game-app-SI2vC]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
