@@ -161,9 +161,43 @@ export default function Transactions() {
     }
   }
 
+  const handleExport = async (format) => {
+    try {
+      const res = await api.get(`/account/transactions/export/${format}`, { responseType: 'blob' })
+      const blob = new Blob([res.data], {
+        type: format === 'pdf' ? 'application/pdf' : 'text/csv; charset=utf-8',
+      })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const date = new Date().toISOString().split('T')[0]
+      a.download = `Kontoauszug_${date}.${format}`
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      alert('Export fehlgeschlagen')
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-white mb-6">Kontoauszug</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-white">Kontoauszug</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleExport('csv')}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-dark-card border border-dark-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+          >
+            CSV
+          </button>
+          <button
+            onClick={() => handleExport('pdf')}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-dark-card border border-dark-border text-gray-400 hover:text-white hover:border-gray-500 transition-colors"
+          >
+            PDF
+          </button>
+        </div>
+      </div>
 
       {/* Filter */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">

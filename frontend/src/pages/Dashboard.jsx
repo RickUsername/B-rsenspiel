@@ -245,7 +245,7 @@ export default function Dashboard() {
         </div>
         <div className="bg-dark-card border border-dark-border rounded-2xl p-5">
           <p className="text-sm text-gray-500 mb-1">Geplant (Orders)</p>
-          <p className="text-2xl font-semibold text-yellow-400">
+          <p className="text-2xl font-semibold text-white">
             {reservedByOrders.toLocaleString('de-DE', { minimumFractionDigits: 2 })}€
           </p>
           {pendingOrders.length > 0 && (
