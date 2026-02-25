@@ -28,24 +28,28 @@ export default function Dashboard() {
   const [balance, setBalance] = useState(null)
   const [watchlist, setWatchlist] = useState([])
   const [transactions, setTransactions] = useState([])
+  const [orders, setOrders] = useState([])
   const [showDeposit, setShowDeposit] = useState(false)
   const [historyData, setHistoryData] = useState([])
   const [historyRange, setHistoryRange] = useState(2) // default: 1W
   const [watchlistExpanded, setWatchlistExpanded] = useState(false)
   const [watchlistSort, setWatchlistSort] = useState('default') // 'default' | 'day_desc' | 'day_asc'
+  const [ordersExpanded, setOrdersExpanded] = useState(false)
 
   const round2 = (v) => Math.round(v * 100) / 100
 
   const fetchData = async () => {
     try {
-      const [balRes, watchRes, txRes] = await Promise.all([
+      const [balRes, watchRes, txRes, ordRes] = await Promise.all([
         api.get('/account/balance'),
         api.get('/account/watchlist'),
         api.get('/account/transactions'),
+        api.get('/orders'),
       ])
       setBalance(balRes.data)
       setWatchlist(watchRes.data)
       setTransactions(txRes.data.slice(0, 5))
+      setOrders(ordRes.data)
     } catch (err) {
       // Stille Fehlerbehandlung
     }
@@ -82,6 +86,30 @@ export default function Dashboard() {
   const totalValue = wsData?.total_value ?? balance?.total_value ?? 0
   const portfolioValue = wsData?.portfolio_value ?? balance?.portfolio_value ?? 0
   const cashBalance = wsData?.balance ?? balance?.balance ?? 0
+  const reservedByOrders = balance?.reserved_by_orders ?? 0
+  const availableBalance = cashBalance - reservedByOrders
+
+  const ORDER_TYPE_LABEL = {
+    limit_buy: 'Kauflimit',
+    limit_sell: 'Verkauflimit',
+    stop_loss: 'Stop-Loss',
+  }
+  const ORDER_TYPE_COLOR = {
+    limit_buy: 'text-accent-green',
+    limit_sell: 'text-blue-400',
+    stop_loss: 'text-accent-red',
+  }
+
+  const pendingOrders = orders.filter(o => o.status === 'pending')
+
+  const handleCancelOrder = async (orderId) => {
+    try {
+      await api.delete(`/orders/${orderId}`)
+      fetchData()
+    } catch (err) {
+      // Stille Fehlerbehandlung
+    }
+  }
 
   // Performance = Gesamtwert minus Einzahlungen (reine Trading-Performance)
   const totalDeposits = balance?.total_deposits ?? 0
@@ -197,18 +225,34 @@ export default function Dashboard() {
       </div>
 
       {/* Konto & Einzahlen */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-dark-card border border-dark-border rounded-2xl p-5">
           <p className="text-sm text-gray-500 mb-1">Verfügbares Guthaben</p>
           <p className="text-2xl font-semibold text-white">
-            {cashBalance.toLocaleString('de-DE', { minimumFractionDigits: 2 })}€
+            {availableBalance.toLocaleString('de-DE', { minimumFractionDigits: 2 })}€
           </p>
+          {reservedByOrders > 0 && (
+            <p className="text-xs text-gray-600 mt-1">
+              davon {reservedByOrders.toLocaleString('de-DE', { minimumFractionDigits: 2 })}€ durch Orders reserviert
+            </p>
+          )}
         </div>
         <div className="bg-dark-card border border-dark-border rounded-2xl p-5">
           <p className="text-sm text-gray-500 mb-1">Investiert</p>
           <p className="text-2xl font-semibold text-white">
             {portfolioValue.toLocaleString('de-DE', { minimumFractionDigits: 2 })}€
           </p>
+        </div>
+        <div className="bg-dark-card border border-dark-border rounded-2xl p-5">
+          <p className="text-sm text-gray-500 mb-1">Geplant (Orders)</p>
+          <p className="text-2xl font-semibold text-yellow-400">
+            {reservedByOrders.toLocaleString('de-DE', { minimumFractionDigits: 2 })}€
+          </p>
+          {pendingOrders.length > 0 && (
+            <p className="text-xs text-gray-600 mt-1">
+              {pendingOrders.length} offene {pendingOrders.length === 1 ? 'Order' : 'Orders'}
+            </p>
+          )}
         </div>
       </div>
 
@@ -295,6 +339,69 @@ export default function Dashboard() {
           )
         })()}
       </div>
+
+      {/* Offene Orders */}
+      {pendingOrders.length > 0 && (
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-lg font-semibold text-white">
+              Offene Orders
+              <span className="ml-2 text-sm font-normal text-gray-500">({pendingOrders.length})</span>
+            </h2>
+            <Link to="/portfolio" className="text-sm text-gray-500 hover:text-white transition-colors">
+              Alle Orders
+            </Link>
+          </div>
+
+          <div className="bg-dark-card border border-dark-border rounded-2xl divide-y divide-dark-border">
+            {(ordersExpanded ? pendingOrders : pendingOrders.slice(0, 3)).map((order) => (
+              <div
+                key={order.id}
+                className="flex items-center justify-between p-4"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs font-semibold ${ORDER_TYPE_COLOR[order.order_type]}`}>
+                      {ORDER_TYPE_LABEL[order.order_type]}
+                    </span>
+                    <Link to={`/asset/${order.ticker}`} className="text-white font-medium hover:underline">
+                      {order.ticker}
+                    </Link>
+                    {order.name && order.name !== order.ticker && (
+                      <span className="text-xs text-gray-500 truncate hidden sm:inline">{order.name}</span>
+                    )}
+                    {order.leverage > 1 && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
+                        {order.leverage}x
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+                    <span>Limit: <span className="text-white">{order.limit_price?.toFixed(2)}€</span></span>
+                    {order.amount_eur && <span>Betrag: <span className="text-white">{order.amount_eur?.toFixed(2)}€</span></span>}
+                    {order.sell_quantity && <span>Menge: <span className="text-white">{order.sell_quantity?.toFixed(4)}</span></span>}
+                    <span>{new Date(order.created_at).toLocaleDateString('de-DE')}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleCancelOrder(order.id)}
+                  className="ml-3 px-3 py-1.5 rounded-lg bg-dark-bg border border-dark-border text-gray-400 text-xs hover:text-white hover:border-gray-500 transition-colors flex-shrink-0"
+                >
+                  Stornieren
+                </button>
+              </div>
+            ))}
+            {pendingOrders.length > 3 && (
+              <button
+                onClick={() => setOrdersExpanded(!ordersExpanded)}
+                className="w-full py-3 text-sm text-gray-500 hover:text-white transition-colors rounded-b-2xl"
+              >
+                {ordersExpanded ? '▲ Weniger anzeigen' : `▼ Alle ${pendingOrders.length} Orders anzeigen`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Letzte Transaktionen */}
       <div>

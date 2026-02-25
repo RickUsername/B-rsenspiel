@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func as sa_func
 
 from database import get_db
-from models import User, Account, Transaction, Position, PriceCache, Watchlist, PortfolioSnapshot, Trade
+from models import User, Account, Transaction, Position, PriceCache, Watchlist, PortfolioSnapshot, Trade, Order
 from auth import get_current_user
 
 router = APIRouter(prefix="/account", tags=["Konto & Portfolio"])
@@ -34,6 +34,7 @@ class BalanceResponse(BaseModel):
     portfolio_value: float
     total_value: float
     total_deposits: float
+    reserved_by_orders: float
 
 
 @router.get("/balance", response_model=BalanceResponse)
@@ -66,12 +67,22 @@ def get_balance(
         Transaction.type == "deposit",
     ).scalar()
 
+    # Summe aller offenen Kauf-Orders (reserviertes Geld)
+    reserved_by_orders = float(db.query(
+        sa_func.coalesce(sa_func.sum(Order.amount_eur), 0.0)
+    ).filter(
+        Order.account_id == account.id,
+        Order.order_type == "limit_buy",
+        Order.status == "pending",
+    ).scalar())
+
     return BalanceResponse(
         balance=round(account.balance, 2),
         account_id=account.id,
         portfolio_value=round(portfolio_value, 2),
         total_value=round(account.balance + portfolio_value, 2),
         total_deposits=round(float(total_deposits), 2),
+        reserved_by_orders=round(reserved_by_orders, 2),
     )
 
 
