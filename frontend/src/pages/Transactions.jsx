@@ -34,7 +34,8 @@ function TradeDetails({ tx }) {
 
   if (tx.type === 'trade_buy') {
     if (!td) return <p className="text-gray-600 text-sm">Keine Details verfügbar</p>
-    const positionSize = td.price * td.quantity * (td.leverage || 1)
+    // quantity enthält den Hebel bereits (quantity = margin * leverage / price)
+    const positionSize = td.price * td.quantity
     const marginUsed = positionSize / (td.leverage || 1)
     const liquidationPrice = td.leverage > 1 ? td.price * (1 - 0.9 / td.leverage) : null
     return (
