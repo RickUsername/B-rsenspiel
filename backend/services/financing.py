@@ -26,13 +26,13 @@ def get_financing_rate(asset_type: str) -> float:
 def calculate_daily_financing(position: Position) -> float:
     """
     Berechnet die täglichen Financing-Kosten für eine Position.
-    financing_cost = position_value * financing_rate / 365
-    position_value = entry_price * quantity * leverage
+    financing_cost = position_value * financing_rate
+    quantity enthält den Hebel bereits (quantity = margin * leverage / price).
     """
     if position.leverage <= 1:
         return 0.0
 
-    position_value = position.entry_price * position.quantity * position.leverage
+    position_value = position.entry_price * position.quantity
     daily_cost = position_value * position.financing_rate
     return round(daily_cost, 4)
 
@@ -80,9 +80,9 @@ def check_margin_call(position: Position, current_price: float, db: Session) -> 
     if position.leverage <= 1:
         return False
 
-    # Unrealisierter P&L berechnen
+    # Unrealisierter P&L berechnen (quantity enthält Hebel bereits)
     price_diff = current_price - position.entry_price
-    unrealized_pnl = price_diff * position.quantity * position.leverage
+    unrealized_pnl = price_diff * position.quantity
     unrealized_pnl -= position.accrued_financing
 
     # Prüfe ob Verlust > 90% der Margin
@@ -101,9 +101,9 @@ def liquidate_position(position: Position, current_price: float, db: Session):
     if not account:
         return
 
-    # P&L berechnen
+    # P&L berechnen (quantity enthält Hebel bereits)
     price_diff = current_price - position.entry_price
-    realized_pnl = price_diff * position.quantity * position.leverage
+    realized_pnl = price_diff * position.quantity
     realized_pnl -= position.accrued_financing
     realized_pnl -= 1.0  # Gebühr
 

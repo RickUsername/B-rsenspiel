@@ -59,7 +59,7 @@ def get_balance(
         if cached:
             current_value = cached.price * pos.quantity
             if pos.leverage > 1:
-                pnl = (cached.price - pos.entry_price) * pos.quantity * pos.leverage
+                pnl = (cached.price - pos.entry_price) * pos.quantity
                 current_value = pos.margin_used + pnl - pos.accrued_financing
             portfolio_value += max(current_value, 0)
         else:
@@ -387,7 +387,7 @@ def get_positions(
 
         # P&L berechnen
         price_diff = current_price - pos.entry_price
-        unrealized_pnl = price_diff * pos.quantity * pos.leverage
+        unrealized_pnl = price_diff * pos.quantity
         unrealized_pnl_after_financing = unrealized_pnl - pos.accrued_financing
 
         # Prozentuale Veränderung bezogen auf Margin
@@ -397,7 +397,7 @@ def get_positions(
         previous_close = cached.previous_close if cached and cached.previous_close else None
         if previous_close and previous_close > 0:
             day_price_diff = current_price - previous_close
-            day_change_eur = round(day_price_diff * pos.quantity * pos.leverage, 2)
+            day_change_eur = round(day_price_diff * pos.quantity, 2)
             day_change_percent = round(day_change_eur / pos.margin_used * 100, 2) if pos.margin_used > 0 else 0
         else:
             day_change_eur = None
@@ -532,7 +532,7 @@ def get_portfolio_history(
             cached = db.query(PriceCache).filter(PriceCache.ticker == pos.ticker).first()
             if cached:
                 if pos.leverage > 1:
-                    pnl = (cached.price - pos.entry_price) * pos.quantity * pos.leverage
+                    pnl = (cached.price - pos.entry_price) * pos.quantity
                     val = pos.margin_used + pnl - pos.accrued_financing
                 else:
                     val = cached.price * pos.quantity

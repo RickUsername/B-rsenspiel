@@ -21,7 +21,7 @@ def take_portfolio_snapshots(db: Session):
             cached = db.query(PriceCache).filter(PriceCache.ticker == pos.ticker).first()
             if cached:
                 if pos.leverage > 1:
-                    pnl = (cached.price - pos.entry_price) * pos.quantity * pos.leverage
+                    pnl = (cached.price - pos.entry_price) * pos.quantity
                     val = pos.margin_used + pnl - pos.accrued_financing
                 else:
                     val = cached.price * pos.quantity

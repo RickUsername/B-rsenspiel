@@ -26,11 +26,12 @@ def get_available_leverage(asset_type: str) -> list[int]:
 def calculate_stop_loss(entry_price: float, leverage: float, margin: float, quantity: float) -> float:
     """
     Berechnet den Stop-Loss-Preis (Liquidation bei 90% Margin-Verlust).
-    stop_loss = entry_price - (0.9 * margin) / (quantity * leverage)
+    quantity enthält den Hebel bereits (quantity = margin * leverage / price).
+    stop_loss = entry_price - (0.9 * margin) / quantity
     """
     if leverage <= 1:
         return 0.0
-    max_loss_per_unit = (0.9 * margin) / (quantity * leverage)
+    max_loss_per_unit = (0.9 * margin) / quantity
     return round(entry_price - max_loss_per_unit, 4)
 
 
@@ -188,7 +189,7 @@ def sell_position(
 
     # P&L für verkaufte Menge berechnen
     price_diff = current_price - position.entry_price
-    gross_pnl = price_diff * qty_sold * position.leverage
+    gross_pnl = price_diff * qty_sold
     financing_portion = position.accrued_financing * fraction
     net_pnl = gross_pnl - financing_portion - FEE
 

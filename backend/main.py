@@ -99,7 +99,7 @@ async def websocket_endpoint(websocket: WebSocket, account_id: int):
                     currency = cached.currency if cached else "USD"
 
                     price_diff = current_price - pos.entry_price
-                    unrealized_pnl = price_diff * pos.quantity * pos.leverage
+                    unrealized_pnl = price_diff * pos.quantity
                     unrealized_pnl -= pos.accrued_financing
 
                     position_current_value = pos.margin_used + unrealized_pnl
@@ -111,7 +111,7 @@ async def websocket_endpoint(websocket: WebSocket, account_id: int):
                     previous_close = cached.previous_close if cached and cached.previous_close else None
                     if previous_close and previous_close > 0:
                         day_price_diff = current_price - previous_close
-                        day_change_eur = round(day_price_diff * pos.quantity * pos.leverage, 2)
+                        day_change_eur = round(day_price_diff * pos.quantity, 2)
                         day_change_percent = round(day_change_eur / pos.margin_used * 100, 2) if pos.margin_used > 0 else 0
                     else:
                         day_change_eur = None
