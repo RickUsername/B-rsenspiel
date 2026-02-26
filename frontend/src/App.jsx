@@ -44,7 +44,7 @@ function App() {
   return (
     <div className="min-h-screen bg-dark-bg">
       {user && <Navbar />}
-      <main className={user ? 'pt-16' : ''}>
+      <main className={user ? 'safe-area-offset-top' : ''}>
         <Routes>
           <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
