@@ -205,7 +205,7 @@ export default function AssetDetail() {
   const positionSize = marginAmount * selectedLeverage
   const quantity = positionSize / assetInfo.price
   const stopLossPrice = selectedLeverage > 1
-    ? assetInfo.price - (0.9 * marginAmount) / (quantity * selectedLeverage || 1)
+    ? assetInfo.price - (0.9 * marginAmount) / (quantity || 1)
     : null
 
   return (

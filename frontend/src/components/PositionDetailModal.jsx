@@ -177,14 +177,6 @@ export default function PositionDetailModal({ position, onClose, onSell }) {
             </Section>
           )}
 
-          {/* Stop-Loss Info */}
-          {pos.stop_loss_price && (
-            <Section title="Stop-Loss">
-              <Row label="Stop-Loss Kurs">
-                <span className="text-accent-red">{currencySymbol}{pos.stop_loss_price?.toFixed(2)}</span>
-              </Row>
-            </Section>
-          )}
         </div>
 
         {/* Footer Buttons */}
