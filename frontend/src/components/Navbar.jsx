@@ -70,7 +70,7 @@ export default function Navbar() {
   return (
     <>
       {/* Top-Nav */}
-      <nav className="fixed top-0 left-0 right-0 h-16 bg-dark-card border-b border-dark-border z-50 flex items-center px-4 md:px-6">
+      <nav className="fixed top-0 left-0 right-0 h-16 bg-dark-card border-b border-dark-border z-50 flex items-center px-4 md:px-6 safe-area-top">
         {/* Hamburger — nur Mobile */}
         <button
           onClick={() => setSidebarOpen(true)}
@@ -130,7 +130,7 @@ export default function Navbar() {
           {/* Sidebar */}
           <div className="absolute top-0 left-0 bottom-0 w-72 bg-dark-card border-r border-dark-border flex flex-col">
             {/* Sidebar Header */}
-            <div className="h-16 flex items-center justify-between px-4 border-b border-dark-border">
+            <div className="h-16 flex items-center justify-between px-4 border-b border-dark-border safe-area-top">
               <span className="text-lg font-bold text-white">Börsenspiel</span>
               <button
                 onClick={() => setSidebarOpen(false)}

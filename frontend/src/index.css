@@ -48,3 +48,12 @@ input[type="number"]::-webkit-outer-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+/* iPhone Safe Area — Notch / Dynamic Island */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-area-offset-top {
+  padding-top: calc(4rem + env(safe-area-inset-top, 0px));
+}
