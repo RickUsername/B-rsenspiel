@@ -6,7 +6,7 @@ Prüft Margin Calls und liquidiert Positionen bei Bedarf.
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
-from models import Position, Transaction, Trade, Account, PriceCache, AssetType
+from models import Position, Transaction, Trade, Account, PriceCache, AssetType, Order
 
 # Financing-Raten pro Tag je Asset-Klasse
 FINANCING_RATES = {
@@ -138,6 +138,14 @@ def liquidate_position(position: Position, current_price: float, db: Session):
         ),
     )
     db.add(transaction)
+
+    # Zugehörige pending Orders stornieren
+    pending = db.query(Order).filter(
+        Order.position_id == position.id,
+        Order.status == "pending",
+    ).all()
+    for order in pending:
+        order.status = "cancelled"
 
     # Position löschen
     db.delete(position)

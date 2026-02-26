@@ -3,10 +3,13 @@ Order-Service: Verarbeitung von Limit- und Stop-Orders.
 Wird vom Scheduler nach jedem Preis-Update aufgerufen.
 """
 
+import logging
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from models import Order, PriceCache, Position
+
+logger = logging.getLogger(__name__)
 
 
 def process_pending_orders(db: Session):
@@ -65,5 +68,6 @@ def process_pending_orders(db: Session):
             order.status = "executed"
             order.executed_at = datetime.now(timezone.utc)
             db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Order #{order.id} ({order.order_type} {order.ticker}) fehlgeschlagen: {e}")
+            db.rollback()

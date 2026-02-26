@@ -4,7 +4,7 @@ Trading Engine: Kauf und Verkauf von Assets mit Hebel-Unterstützung.
 
 from sqlalchemy.orm import Session
 
-from models import Account, Position, Trade, Transaction, PriceCache, AssetType
+from models import Account, Position, Trade, Transaction, PriceCache, AssetType, Order
 from services.financing import get_financing_rate
 
 # Verfügbare Hebel je Asset-Klasse
@@ -16,6 +16,16 @@ AVAILABLE_LEVERAGE = {
 }
 
 FEE = 1.0  # 1€ Gebühr pro Trade
+
+
+def cancel_orders_for_position(db: Session, position_id: int):
+    """Storniert alle ausstehenden Orders für eine gelöschte Position."""
+    pending = db.query(Order).filter(
+        Order.position_id == position_id,
+        Order.status == "pending",
+    ).all()
+    for order in pending:
+        order.status = "cancelled"
 
 
 def get_available_leverage(asset_type: str) -> list[int]:
@@ -237,6 +247,8 @@ def sell_position(
                 position.entry_price, position.leverage, position.margin_used, position.quantity
             )
     else:
+        # Zugehörige pending Orders stornieren
+        cancel_orders_for_position(db, position.id)
         # Gesamte Position löschen
         db.delete(position)
 
